@@ -2,6 +2,30 @@ import * as THREE from 'three'
 import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot } from './types'
 
 export type ForceMetric = 'axial' | 'shear' | 'moment'
+export type SupportKind = 'none' | 'fixed' | 'pinned' | 'roller-x' | 'roller-y' | 'roller-z' | 'partial'
+
+export function classifySupport(restraints: boolean[] | undefined, dimension: 2 | 3): SupportKind {
+  if (!restraints || restraints.length !== 6 || !restraints.some(Boolean)) {
+    return 'none'
+  }
+  const [ux, uy, uz, rx, ry, rz] = restraints
+  if (dimension === 2) {
+    if (ux && uz && ry) return 'fixed'
+    if (ux && uz && !ry) return 'pinned'
+    if (!ux && uz && !ry) return 'roller-x'
+    if (ux && !uz && !ry) return 'roller-z'
+    return 'partial'
+  }
+  if (ux && uy && uz && rx && ry && rz) return 'fixed'
+  if (ux && uy && uz && !rx && !ry && !rz) return 'pinned'
+  if (!rx && !ry && !rz) {
+    const freeTranslations = [!ux ? 'x' : null, !uy ? 'y' : null, !uz ? 'z' : null].filter(Boolean)
+    if (freeTranslations.length === 1) {
+      return `roller-${freeTranslations[0]}` as SupportKind
+    }
+  }
+  return 'partial'
+}
 
 export function getCaseNodeDisplacement(activeCase: VisualizationCase, nodeId: string) {
   const displacement = activeCase.nodeResults[nodeId]?.displacement
@@ -44,6 +68,14 @@ export function getNodeReactionMagnitude(activeCase: VisualizationCase, nodeId: 
     return 0
   }
   return Math.sqrt((reaction.fx || 0) ** 2 + (reaction.fy || 0) ** 2 + (reaction.fz || 0) ** 2)
+}
+
+export function getNodeReactionMomentMagnitude(activeCase: VisualizationCase, nodeId: string) {
+  const reaction = activeCase.nodeResults[nodeId]?.reaction
+  if (!reaction) {
+    return 0
+  }
+  return Math.sqrt((reaction.mx || 0) ** 2 + (reaction.my || 0) ** 2 + (reaction.mz || 0) ** 2)
 }
 
 export function getNodeDisplacementMagnitude(activeCase: VisualizationCase, nodeId: string) {
@@ -98,18 +130,17 @@ function roundUpNice(value: number) {
 }
 
 export function projectPosition(position: THREE.Vector3, plane: VisualizationPlane, dimension: 2 | 3) {
-  if (dimension === 3) {
-    // Canonical 3D snapshots are already expressed in z-up world coordinates.
+  if (dimension === 2 || plane === 'xy') {
     return position.clone()
   }
-  if (plane === 'xy') {
-    // Orthographic XY views look down the global z axis.
-    return new THREE.Vector3(position.x, position.z, position.y)
+  if (plane === 'xz') {
+    // Rotate the source XZ plane onto the render XY ground. Source +Y becomes
+    // render +Z, while source +Z points toward render -Y.
+    return new THREE.Vector3(position.x, -position.z, position.y)
   }
-  if (plane === 'yz') {
-    return new THREE.Vector3(position.y, position.x, position.z)
-  }
-  return new THREE.Vector3(position.x, position.y, position.z)
+  // Rotate the source YZ plane onto the render XY ground. Source +X becomes
+  // render +Z.
+  return new THREE.Vector3(position.y, position.z, position.x)
 }
 
 export function isRenderableLoadVector(vector: THREE.Vector3) {
@@ -151,7 +182,7 @@ function planeGridFallback(plane: VisualizationPlane) {
     return {
       size: 24,
       divisions: 24,
-      position: [0, 0, -0.001] as [number, number, number],
+      position: [0, 0, 0] as [number, number, number],
       rotation: [Math.PI / 2, 0, 0] as [number, number, number],
     }
   }
@@ -159,14 +190,14 @@ function planeGridFallback(plane: VisualizationPlane) {
     return {
       size: 24,
       divisions: 24,
-      position: [-0.001, 0, 0] as [number, number, number],
+      position: [0, 0, 0] as [number, number, number],
       rotation: [0, 0, Math.PI / 2] as [number, number, number],
     }
   }
   return {
     size: 24,
     divisions: 24,
-    position: [0, -0.001, 0] as [number, number, number],
+    position: [0, 0, 0] as [number, number, number],
     rotation: [0, 0, 0] as [number, number, number],
   }
 }
@@ -176,17 +207,14 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
     return planeGridFallback(snapshot.dimension === 3 ? 'xy' : plane)
   }
 
-  // For 3D mode, always compute grid from raw positions (z-up canonical).
-  // The grid should always be the horizontal floor (XY plane) at minZ,
-  // regardless of which analysis plane the user selected.
-  const effectivePlane = snapshot.dimension === 3 ? 'xy' : plane
-
-  const projected = snapshot.nodes.map((node) =>
-    projectPosition(new THREE.Vector3(node.position.x, node.position.y, node.position.z), effectivePlane, snapshot.dimension),
-  )
-  const xs = projected.map((p) => p.x)
-  const ys = projected.map((p) => p.y)
-  const zs = projected.map((p) => p.z)
+  const positions = snapshot.nodes.map((node) => projectPosition(
+    new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+    plane,
+    snapshot.dimension,
+  ))
+  const xs = positions.map((position) => position.x)
+  const ys = positions.map((position) => position.y)
+  const zs = positions.map((position) => position.z)
   const minX = Math.min(...xs)
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
@@ -194,20 +222,15 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
   const minZ = Math.min(...zs)
   const maxZ = Math.max(...zs)
 
-  const offsetBase = Math.max(
-    maxX - minX,
-    maxY - minY,
-    maxZ - minZ,
-    1,
-  )
-  const offset = Math.max(offsetBase * 0.01, 0.001)
-
-  if (effectivePlane === 'xy') {
+  if (snapshot.dimension === 3) {
     const spanX = Math.max(maxX - minX, 1)
     const spanY = Math.max(maxY - minY, 1)
-    const span = Math.max(spanX, spanY)
-    const size = roundUpNice(span * 1.5)
-    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    const spanZ = Math.max(maxZ - minZ, 1)
+    const groundSpan = Math.max(spanX, spanY)
+    const size = roundUpNice(groundSpan * 1.5)
+    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(groundSpan / 18, 0.25))))
+    const offset = Math.max(Math.max(spanX, spanY, spanZ) * 0.01, 0.001)
+
     return {
       size,
       divisions,
@@ -216,7 +239,21 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
     }
   }
 
-  if (effectivePlane === 'yz') {
+  if (plane === 'xy') {
+    const spanX = Math.max(maxX - minX, 1)
+    const spanY = Math.max(maxY - minY, 1)
+    const span = Math.max(spanX, spanY)
+    const size = roundUpNice(span * 1.5)
+    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    return {
+      size,
+      divisions,
+      position: [(minX + maxX) * 0.5, (minY + maxY) * 0.5, 0] as [number, number, number],
+      rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+    }
+  }
+
+  if (plane === 'yz') {
     const spanY = Math.max(maxY - minY, 1)
     const spanZ = Math.max(maxZ - minZ, 1)
     const span = Math.max(spanY, spanZ)
@@ -225,7 +262,7 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
     return {
       size,
       divisions,
-      position: [minX - offset, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5] as [number, number, number],
+      position: [0, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5] as [number, number, number],
       rotation: [0, 0, Math.PI / 2] as [number, number, number],
     }
   }
@@ -239,32 +276,75 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
   return {
     size,
     divisions,
-    position: [(minX + maxX) * 0.5, minY - offset, (minZ + maxZ) * 0.5] as [number, number, number],
+    position: [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5] as [number, number, number],
     rotation: [0, 0, 0] as [number, number, number],
   }
 }
 
-export function getPlaneCameraPreset(plane: VisualizationPlane) {
+export function getPlaneCameraPreset(plane: VisualizationPlane, dimension: 2 | 3) {
+  if (dimension === 3) {
+    return {
+      direction: [1.25, -1.5, 0.65] as [number, number, number],
+      up: [0, 0, 1] as [number, number, number],
+    }
+  }
   if (plane === 'xy') {
     return {
-      position: [0, 0, 10] as [number, number, number],
+      direction: [0, 0, 1] as [number, number, number],
       up: [0, 1, 0] as [number, number, number],
     }
   }
   if (plane === 'yz') {
     return {
-      position: [10, 0, 0] as [number, number, number],
+      direction: [1, 0, 0] as [number, number, number],
       up: [0, 0, 1] as [number, number, number],
     }
   }
   return {
-    position: [0, 10, 0] as [number, number, number],
+    // View XZ from -Y so positive X remains rightward on screen.
+    direction: [0, -1, 0] as [number, number, number],
     up: [0, 0, 1] as [number, number, number],
   }
 }
 
+export function getSnapshotCenter(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
+  if (!snapshot.nodes.length) {
+    return [0, 0, 0] as [number, number, number]
+  }
+
+  const bounds = new THREE.Box3()
+  snapshot.nodes.forEach((node) => {
+    bounds.expandByPoint(projectPosition(
+      new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+      plane,
+      snapshot.dimension,
+    ))
+  })
+  return bounds.getCenter(new THREE.Vector3()).toArray() as [number, number, number]
+}
+
+export function getPlaneCameraFrame(
+  plane: VisualizationPlane,
+  dimension: 2 | 3,
+  target: [number, number, number],
+  distance = 10
+) {
+  const preset = getPlaneCameraPreset(plane, dimension)
+  const targetVector = new THREE.Vector3(...target)
+  const position = new THREE.Vector3(...preset.direction)
+    .normalize()
+    .multiplyScalar(distance)
+    .add(targetVector)
+
+  return {
+    position: position.toArray() as [number, number, number],
+    target: [...target] as [number, number, number],
+    up: preset.up,
+  }
+}
+
 export function getNodeLabelOffset(plane: VisualizationPlane, dimension: 2 | 3) {
-  const [x, y, z] = getPlaneCameraPreset(plane).up
+  const [x, y, z] = getPlaneCameraPreset(plane, dimension).up
   const distance = dimension === 3 ? 0.24 : 0.18
   return new THREE.Vector3(x, y, z).multiplyScalar(distance)
 }

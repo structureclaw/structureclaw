@@ -400,6 +400,20 @@ describe('AIConsole presentation rendering', () => {
             type: 'artifact_payload_sync',
             artifact: 'model',
             model: {
+              schema_version: '2.0.0',
+              unit_system: 'SI',
+              coordinate_system: {
+                semantics: 'global-z-up',
+                version: 1,
+                dimension: '2d',
+                plane: 'xz',
+                dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+              },
+              metadata: {
+                coordinateSemantics: 'global-z-up',
+                coordinateContractVersion: 1,
+                frameDimension: '2d',
+              },
               nodes: [
                 { id: 'N1', x: 0, y: 0, z: 0 },
                 { id: 'N2', x: 6, y: 0, z: 0 },

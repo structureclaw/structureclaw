@@ -2,16 +2,19 @@
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
+import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera, useBounds } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
 import { getBucklingModes, getVisualizationExtensionByView } from './extensions'
 import type { BucklingMode, VisualizationCase, VisualizationLoad, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 import {
   type ForceMetric,
+  type SupportKind,
+  classifySupport,
   getCaseNodeDisplacement,
   getElementMetric,
   getNodeReactionMagnitude,
+  getNodeReactionMomentMagnitude,
   getNodeDisplacementMagnitude,
   getNodeLabelOffset,
   createColorScale,
@@ -20,7 +23,8 @@ import {
   getLoadArrowLength,
   getAdaptiveGridConfig,
   projectPosition,
-  getPlaneCameraPreset,
+  getPlaneCameraFrame,
+  getSnapshotCenter,
 } from './structural-scene-utils'
 
 export type SceneExportHandle = {
@@ -201,6 +205,100 @@ function VectorArrow({
   )
 }
 
+function SupportMarker({ kind, origin }: { kind: SupportKind; origin: THREE.Vector3 }) {
+  if (kind === 'none') {
+    return null
+  }
+  const color = '#94a3b8'
+  const isRoller = kind === 'roller-x' || kind === 'roller-y'
+  const rollerOffsets = kind === 'roller-y'
+    ? [[0, -0.13, -0.42], [0, 0.13, -0.42]]
+    : [[-0.13, 0, -0.42], [0.13, 0, -0.42]]
+
+  if (kind === 'fixed') {
+    return (
+      <group position={origin.toArray()}>
+        <mesh position={[0, 0, -0.12]}>
+          <boxGeometry args={[0.5, 0.5, 0.16]} />
+          <meshStandardMaterial color={color} metalness={0.15} roughness={0.65} />
+        </mesh>
+        <Line color={color} lineWidth={1.5} points={[[-0.32, 0, -0.22], [0.32, 0, -0.22]]} />
+      </group>
+    )
+  }
+
+  if (kind === 'pinned' || isRoller) {
+    return (
+      <group position={origin.toArray()}>
+        <mesh position={[0, 0, -0.19]} rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.25, 0.36, 4]} />
+          <meshStandardMaterial color={color} metalness={0.1} roughness={0.7} />
+        </mesh>
+        {isRoller && rollerOffsets.map((offset, index) => (
+          <mesh key={`${kind}-${index}`} position={offset as [number, number, number]}>
+            <sphereGeometry args={[0.075, 14, 14]} />
+            <meshStandardMaterial color={color} metalness={0.2} roughness={0.55} />
+          </mesh>
+        ))}
+      </group>
+    )
+  }
+
+  return (
+    <group position={origin.toArray()}>
+      <mesh position={[0, 0, -0.2]}>
+        <octahedronGeometry args={[0.22, 0]} />
+        <meshStandardMaterial color="#a78bfa" wireframe />
+      </mesh>
+    </group>
+  )
+}
+
+function MomentLoadMarker({
+  color,
+  origin,
+  radius,
+  selected,
+  vector,
+  onClick,
+}: {
+  color: string
+  origin: THREE.Vector3
+  radius: number
+  selected: boolean
+  vector: THREE.Vector3
+  onClick: () => void
+}) {
+  const direction = useMemo(() => vector.clone().normalize(), [vector])
+  const quaternion = useMemo(() => {
+    const base = new THREE.Vector3(0, 0, 1)
+    const next = new THREE.Quaternion()
+    next.setFromUnitVectors(base, direction.lengthSq() > 0 ? direction : base)
+    return next
+  }, [direction])
+  const arrowOrigin = useMemo(() => new THREE.Vector3(radius, -radius * 0.3, 0), [radius])
+  const arrowVector = useMemo(() => new THREE.Vector3(0, radius * 0.6, 0), [radius])
+
+  return (
+    <group position={origin} quaternion={quaternion}>
+      <mesh
+        onClick={(event) => {
+          event.stopPropagation()
+          onClick()
+        }}
+      >
+        <torusGeometry args={[radius, selected ? 0.045 : 0.032, 10, 48]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={selected ? '#fff7ed' : '#000000'}
+          emissiveIntensity={selected ? 0.45 : 0}
+        />
+      </mesh>
+      <VectorArrow color={color} origin={arrowOrigin} selected={selected} vector={arrowVector} />
+    </group>
+  )
+}
+
 function DistributedLoadMarker({
   color,
   start,
@@ -297,19 +395,19 @@ function AreaLoadMarker({
     }
     const vector = projectPosition(raw.normalize().multiplyScalar(arrowLength), plane, dimension)
     const direction = vector.clone().normalize()
-    const minX = Math.min(...panelPoints.map((point) => point.x))
-    const maxX = Math.max(...panelPoints.map((point) => point.x))
-    const minY = Math.min(...panelPoints.map((point) => point.y))
-    const maxY = Math.max(...panelPoints.map((point) => point.y))
-    const z = panelPoints.reduce((sum, point) => sum + point.z, 0) / panelPoints.length
-    const xValues = [0.25, 0.5, 0.75].map((ratio) => minX + (maxX - minX) * ratio)
-    const yValues = [0.25, 0.5, 0.75].map((ratio) => minY + (maxY - minY) * ratio)
-    return xValues.flatMap((x) =>
-      yValues.map((y) => ({
-        origin: new THREE.Vector3(x, y, z).sub(direction.clone().multiplyScalar(vector.length())),
-        vector,
-      }))
-    )
+    const ratios = [0.25, 0.5, 0.75]
+    const samplePoints = panelPoints.length === 4
+      ? ratios.flatMap((u) => ratios.map((v) => {
+          const nearEdge = panelPoints[0].clone().lerp(panelPoints[1], u)
+          const farEdge = panelPoints[3].clone().lerp(panelPoints[2], u)
+          return nearEdge.lerp(farEdge, v)
+        }))
+      : [panelPoints.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / panelPoints.length)]
+
+    return samplePoints.map((point) => ({
+      origin: point.clone().sub(direction.clone().multiplyScalar(vector.length())),
+      vector,
+    }))
   }, [arrowLength, dimension, load.vector.x, load.vector.y, load.vector.z, panelPoints, plane])
 
   if (!geometry || panelPoints.length < 3) {
@@ -443,6 +541,7 @@ function SceneContent({
   maxElementMetric,
   rawMaxElementMetric,
   maxReaction,
+  maxReactionMoment,
   maxDisplacement,
   maxUtilization,
   bucklingModeIndex,
@@ -451,6 +550,7 @@ function SceneContent({
   maxElementMetric: number
   rawMaxElementMetric: number
   maxReaction: number
+  maxReactionMoment: number
   maxDisplacement: number
   maxUtilization: number
   bucklingAmplitudeRef: React.MutableRefObject<number>
@@ -458,7 +558,10 @@ function SceneContent({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot, plane), [snapshot, plane])
-  const cameraPreset = useMemo(() => getPlaneCameraPreset(plane), [plane])
+  const cameraFrame = useMemo(
+    () => getPlaneCameraFrame(plane, snapshot.dimension, getSnapshotCenter(snapshot, plane)),
+    [plane, snapshot]
+  )
 
   // Buckling mode shape for the active mode index
   const activeBucklingMode: BucklingMode | null = useMemo(() => {
@@ -556,30 +659,32 @@ function SceneContent({
           key={`perspective-${plane}-${resetToken}`}
           makeDefault
           fov={42}
-          position={[8, 8, 8]}
+          position={cameraFrame.position}
           onUpdate={(camera) => {
-            camera.up.set(0, 0, 1)
+            camera.up.set(...cameraFrame.up)
+            camera.lookAt(...cameraFrame.target)
           }}
         />
       ) : (
         <OrthographicCamera
           key={`ortho-${plane}-${resetToken}`}
           makeDefault
-          position={cameraPreset.position}
+          position={cameraFrame.position}
           zoom={48}
           onUpdate={(camera) => {
-            camera.up.set(cameraPreset.up[0], cameraPreset.up[1], cameraPreset.up[2])
+            camera.up.set(...cameraFrame.up)
+            camera.lookAt(...cameraFrame.target)
           }}
         />
       )}
       <ambientLight intensity={0.9} />
       <directionalLight intensity={1.2} position={[10, 12, 8]} />
       <directionalLight intensity={0.45} position={[-8, -4, 10]} />
-      <OrbitControls key={`controls-${plane}-${resetToken}`} makeDefault target={[0, 0, 0]} />
+      <OrbitControls key={`controls-${plane}-${resetToken}`} makeDefault target={cameraFrame.target} />
       <FocusController focusTarget={selectedFocusPoint} resetToken={resetToken} />
       <gridHelper args={[gridConfig.size, gridConfig.divisions, '#1f9dc2', '#334155']} position={gridConfig.position} rotation={gridConfig.rotation} />
 
-      <Bounds clip fit margin={1.2} observe>
+      <Bounds margin={1.2}>
         <group onDoubleClick={() => {
           onClearSelection()
         }}>
@@ -605,6 +710,9 @@ function SceneContent({
             )
           })}
           {snapshot.elements.map((element) => {
+            if (!['beam', 'truss', 'column', 'brace', 'link'].includes(element.type)) {
+              return null
+            }
             const startData = nodeMap.get(element.nodeIds[0])
             const endData = nodeMap.get(element.nodeIds[1])
             if (!startData || !endData) {
@@ -646,6 +754,10 @@ function SceneContent({
             const undeformedEnd = projectPosition(endData.position, plane, snapshot.dimension)
             const currentStart = projectPosition(start, plane, snapshot.dimension)
             const currentEnd = projectPosition(end, plane, snapshot.dimension)
+            const modeStart = activeBucklingMode?.modeShape[element.nodeIds[0]] ?? [0, 0, 0]
+            const modeEnd = activeBucklingMode?.modeShape[element.nodeIds[1]] ?? [0, 0, 0]
+            const projectedModeStart = projectPosition(new THREE.Vector3(...modeStart), plane, snapshot.dimension).toArray() as [number, number, number]
+            const projectedModeEnd = projectPosition(new THREE.Vector3(...modeEnd), plane, snapshot.dimension).toArray() as [number, number, number]
             const distributedLoadVectors = showLoads
               ? snapshot.loads.reduce<THREE.Vector3[]>((vectors, load) => {
                   if (load.kind !== 'distributed' || load.elementId !== element.id) {
@@ -675,8 +787,8 @@ function SceneContent({
                     amplitudeRef={bucklingAmplitudeRef}
                     baseStart={currentStart}
                     baseEnd={currentEnd}
-                    modeStart={activeBucklingMode.modeShape[element.nodeIds[0]] ?? [0, 0, 0]}
-                    modeEnd={activeBucklingMode.modeShape[element.nodeIds[1]] ?? [0, 0, 0]}
+                    modeStart={projectedModeStart}
+                    modeEnd={projectedModeEnd}
                     scale={bucklingScale}
                     color={color}
                     selected={selectedElementId === element.id}
@@ -745,14 +857,23 @@ function SceneContent({
                     : '#f8fafc'
             const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
             const finalPosition = projectPosition(position, plane, snapshot.dimension)
+            const supportPosition = projectPosition(nodeData.position, plane, snapshot.dimension)
+            const supportKind = classifySupport(entry.restraints, snapshot.dimension)
             const reaction = activeCase.nodeResults[entry.id]?.reaction
             const arrowVector = reaction
               ? new THREE.Vector3(reaction.fx || 0, reaction.fy || 0, reaction.fz || 0)
-                  .multiplyScalar(0.03 / Math.max(maxReaction, 1))
+                  .multiplyScalar(loadArrowLength * 0.9 / Math.max(maxReaction, 1))
+              : null
+            const reactionMomentVector = reaction
+              ? new THREE.Vector3(reaction.mx || 0, reaction.my || 0, reaction.mz || 0)
+              : null
+            const reactionMomentMagnitude = reactionMomentVector?.length() || 0
+            const projectedReactionMomentVector = reactionMomentVector
+              ? projectPosition(reactionMomentVector, plane, snapshot.dimension)
               : null
             const loadVectors = showLoads
               ? snapshot.loads.reduce<THREE.Vector3[]>((vectors, load) => {
-                  if (load.nodeId !== entry.id) {
+                  if (load.nodeId !== entry.id || load.kind === 'moment') {
                     return vectors
                   }
 
@@ -769,9 +890,29 @@ function SceneContent({
                   return vectors
                 }, [])
               : []
+            const momentLoads = showLoads
+              ? snapshot.loads.reduce<Array<{ index: number; vector: THREE.Vector3 }>>((vectors, load, index) => {
+                  if (load.nodeId !== entry.id || load.kind !== 'moment') {
+                    return vectors
+                  }
+                  if (view !== 'model' && load.caseId && load.caseId !== activeCase.id) {
+                    return vectors
+                  }
+                  const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+                  if (!isRenderableLoadVector(raw)) {
+                    return vectors
+                  }
+                  vectors.push({
+                    index,
+                    vector: projectPosition(raw, plane, snapshot.dimension),
+                  })
+                  return vectors
+                }, [])
+              : []
 
             return (
               <group key={entry.id}>
+                <SupportMarker kind={supportKind} origin={supportPosition} />
                 {selectedNodeId === entry.id ? (
                   <mesh position={finalPosition.toArray()}>
                     <sphereGeometry args={[snapshot.dimension === 3 ? 0.34 : 0.28, 24, 24]} />
@@ -815,6 +956,20 @@ function SceneContent({
                 {view === 'reactions' && arrowVector && arrowVector.length() > 0.0001 && (
                   <VectorArrow color="#fb923c" origin={finalPosition} vector={projectPosition(arrowVector, plane, snapshot.dimension)} />
                 )}
+                {view === 'reactions' && projectedReactionMomentVector && reactionMomentMagnitude > 1e-12 && (
+                  <MomentLoadMarker
+                    color="#c084fc"
+                    origin={finalPosition}
+                    radius={loadArrowLength * (0.25 + 0.2 * reactionMomentMagnitude / Math.max(maxReactionMoment, 1e-12))}
+                    selected={selectedNodeId === entry.id}
+                    vector={projectedReactionMomentVector}
+                    onClick={() => {
+                      onSelectNode(entry.id)
+                      onSelectElement(null)
+                      onSelectLoad(null)
+                    }}
+                  />
+                )}
                 {showLoads && loadVectors.map((vector, index) => (
                   <VectorArrow
                     color={typeof selectedLoadIndex === 'number' && snapshot.loads[selectedLoadIndex]?.nodeId === entry.id ? '#f59e0b' : '#22c55e'}
@@ -824,13 +979,64 @@ function SceneContent({
                     vector={vector}
                   />
                 ))}
+                {momentLoads.map((load) => (
+                  <MomentLoadMarker
+                    color={selectedLoadIndex === load.index ? '#f59e0b' : '#22c55e'}
+                    key={`${entry.id}-moment-${load.index}`}
+                    onClick={() => {
+                      onSelectLoad(load.index)
+                      onSelectNode(null)
+                      onSelectElement(null)
+                    }}
+                    origin={finalPosition}
+                    radius={loadArrowLength * 0.45}
+                    selected={selectedLoadIndex === load.index}
+                    vector={load.vector}
+                  />
+                ))}
               </group>
             )
           })}
         </group>
+        <PlaneBoundsController plane={plane} resetToken={resetToken} snapshot={snapshot} />
       </Bounds>
     </>
   )
+}
+
+function PlaneBoundsController({
+  plane,
+  resetToken,
+  snapshot,
+}: {
+  plane: VisualizationPlane
+  resetToken: number
+  snapshot: VisualizationSnapshot
+}) {
+  const bounds = useBounds()
+  const camera = useThree((state) => state.camera)
+  const height = useThree((state) => state.size.height)
+  const width = useThree((state) => state.size.width)
+
+  useEffect(() => {
+    const { center, distance } = bounds.refresh().getSize()
+    const frame = getPlaneCameraFrame(
+      plane,
+      snapshot.dimension,
+      center.toArray() as [number, number, number],
+      distance
+    )
+
+    bounds
+      .moveTo(frame.position)
+      .lookAt({ target: frame.target, up: frame.up })
+    if ((camera as THREE.OrthographicCamera).isOrthographicCamera) {
+      bounds.fit()
+    }
+    bounds.clip()
+  }, [bounds, camera, height, plane, resetToken, snapshot, width])
+
+  return null
 }
 
 /** Internal R3F component that captures gl and invalidate into parent refs. */
@@ -961,6 +1167,10 @@ export function StructuralScene(props: StructuralSceneProps) {
     () => Math.max(1, ...snapshot.nodes.map((node) => getNodeReactionMagnitude(activeCase, node.id))),
     [activeCase, snapshot.nodes]
   )
+  const maxReactionMoment = useMemo(
+    () => Math.max(1e-12, ...snapshot.nodes.map((node) => getNodeReactionMomentMagnitude(activeCase, node.id))),
+    [activeCase, snapshot.nodes]
+  )
   const maxDisplacement = useMemo(
     () => Math.max(1e-12, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
     [activeCase, snapshot.nodes]
@@ -1056,7 +1266,7 @@ export function StructuralScene(props: StructuralSceneProps) {
         <PngExporter glRef={glRef} invalidateRef={invalidateRef} />
         {view === 'buckling' && <BucklingAnimator amplitudeRef={bucklingAmplitudeRef} />}
         <Suspense fallback={null}>
-          <SceneContent {...props} maxElementMetric={maxElementMetric} rawMaxElementMetric={rawMaxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} bucklingAmplitudeRef={bucklingAmplitudeRef} />
+          <SceneContent {...props} maxElementMetric={maxElementMetric} rawMaxElementMetric={rawMaxElementMetric} maxReaction={maxReaction} maxReactionMoment={maxReactionMoment} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} bucklingAmplitudeRef={bucklingAmplitudeRef} />
         </Suspense>
       </Canvas>
       {showLegend && colorBarProps && (

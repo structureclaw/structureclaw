@@ -25,6 +25,7 @@ function withUnit(value: string, unit?: string) {
 function getLoadUnit(load: VisualizationLoad, snapshot: VisualizationSnapshot | null) {
   if (load.kind === 'area') return snapshot?.floorLoadUnit
   if (load.kind === 'distributed') return snapshot?.distributedLoadUnit
+  if (load.kind === 'moment') return snapshot?.momentUnit
   return snapshot?.nodalLoadUnit
 }
 
@@ -49,6 +50,9 @@ function getLoadListLabel(load: VisualizationLoad) {
   }
   if (load.kind === 'distributed') {
     return `${load.elementId || '-'} · q`
+  }
+  if (load.kind === 'moment') {
+    return `${load.nodeId || '-'} · M`
   }
   return `${load.nodeId || '-'} · P`
 }
@@ -112,7 +116,13 @@ export function StructuralVisualizationModal({
   t,
 }: StructuralVisualizationModalProps) {
   const [view, setView] = useState<VisualizationViewMode>('model')
-  const [plane, setPlane] = useState<VisualizationPlane>('xz')
+  const [planeSelection, setPlaneSelection] = useState<{
+    snapshot: VisualizationSnapshot | null
+    plane: VisualizationPlane
+  }>(() => ({ snapshot, plane: snapshot?.plane ?? 'xy' }))
+  const plane = planeSelection.snapshot === snapshot
+    ? planeSelection.plane
+    : snapshot?.plane ?? 'xy'
   const [resetToken, setResetToken] = useState(0)
   const [activeCaseId, setActiveCaseId] = useState('')
   const [deformationScale, setDeformationScale] = useState(12)
@@ -130,7 +140,7 @@ export function StructuralVisualizationModal({
   const exportRef = useRef<SceneExportHandle | null>(null)
 
   const handlePlaneChange = (nextPlane: VisualizationPlane) => {
-    setPlane(nextPlane)
+    setPlaneSelection({ snapshot, plane: nextPlane })
     setResetToken((current) => current + 1)
   }
 
@@ -139,7 +149,6 @@ export function StructuralVisualizationModal({
       return
     }
     setView(snapshot.availableViews[0] || 'model')
-    setPlane(snapshot.plane)
     setActiveCaseId(snapshot.defaultCaseId)
     setSelectedNodeId(null)
     setSelectedElementId(null)
@@ -258,7 +267,11 @@ export function StructuralVisualizationModal({
                 <div>Y: {withUnit(formatNumber(selectedNode.position.y, locale), snapshot?.lengthUnit || snapshot?.nodeLabelUnit)}</div>
                 <div>Z: {withUnit(formatNumber(selectedNode.position.z, locale), snapshot?.lengthUnit || snapshot?.nodeLabelUnit)}</div>
                 {selectedNode.restraints?.length ? (
-                  <div>{t('visualizationSupportRestraints')}: {selectedNode.restraints.map((value) => (value ? '1' : '0')).join(' ')}</div>
+                  <div>
+                    {t('visualizationSupportRestraints')}: {selectedNode.restraints
+                      .map((value, index) => `${['ux', 'uy', 'uz', 'rx', 'ry', 'rz'][index]}=${value ? '1' : '0'}`)
+                      .join(' ')}
+                  </div>
                 ) : null}
                 {!modelOnly && selectedNodeResults?.displacement && (
                   <div>
@@ -273,16 +286,28 @@ export function StructuralVisualizationModal({
                   </div>
                 )}
                 {!modelOnly && selectedNodeResults?.reaction && (
-                  <div>
-                    {t('visualizationViewReactions')}: {withUnit(formatNumber(
-                      Math.sqrt(
-                        (selectedNodeResults.reaction.fx || 0) ** 2 +
-                        (selectedNodeResults.reaction.fy || 0) ** 2 +
-                        (selectedNodeResults.reaction.fz || 0) ** 2
-                      ),
-                      locale
-                    ), snapshot?.resultUnit)}
-                  </div>
+                  <>
+                    <div>
+                      {t('visualizationViewReactions')}: {withUnit(formatNumber(
+                        Math.sqrt(
+                          (selectedNodeResults.reaction.fx || 0) ** 2 +
+                          (selectedNodeResults.reaction.fy || 0) ** 2 +
+                          (selectedNodeResults.reaction.fz || 0) ** 2
+                        ),
+                        locale
+                      ), snapshot?.resultUnit)}
+                    </div>
+                    <div>
+                      {t('visualizationForceMoment')}: {withUnit(formatNumber(
+                        Math.sqrt(
+                          (selectedNodeResults.reaction.mx || 0) ** 2 +
+                          (selectedNodeResults.reaction.my || 0) ** 2 +
+                          (selectedNodeResults.reaction.mz || 0) ** 2
+                        ),
+                        locale
+                      ), snapshot?.momentUnit)}
+                    </div>
+                  </>
                 )}
                 {!modelOnly && selectedNodeResults?.envelope?.controlCase && (
                   <div>{t('visualizationControlCase')}: {String(selectedNodeResults.envelope.controlCase)}</div>
@@ -327,6 +352,18 @@ export function StructuralVisualizationModal({
                   </>
                 ) : (
                   <>
+                    <div>
+                      {t('visualizationReferenceFrame')}: {t(
+                        selectedLoad.referenceFrame === 'element-local'
+                          ? 'visualizationElementLocalFrame'
+                          : 'visualizationGlobalFrame'
+                      )}
+                    </div>
+                    {selectedLoad.referenceFrame === 'element-local' && selectedLoad.sourceVector ? (
+                      <div>
+                        {t('visualizationLocalComponents')}: {formatNumber(selectedLoad.sourceVector.x, locale)} / {formatNumber(selectedLoad.sourceVector.y, locale)} / {formatNumber(selectedLoad.sourceVector.z, locale)}
+                      </div>
+                    ) : null}
                     <div>X: {withUnit(formatNumber(selectedLoad.vector.x, locale), getLoadUnit(selectedLoad, snapshot))}</div>
                     <div>Y: {withUnit(formatNumber(selectedLoad.vector.y, locale), getLoadUnit(selectedLoad, snapshot))}</div>
                     <div>Z: {withUnit(formatNumber(selectedLoad.vector.z, locale), getLoadUnit(selectedLoad, snapshot))}</div>

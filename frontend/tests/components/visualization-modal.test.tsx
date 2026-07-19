@@ -11,7 +11,7 @@ const modelSnapshot: VisualizationSnapshot = {
   title: 'Model Preview',
   source: 'model',
   dimension: 2,
-  plane: 'xy',
+  plane: 'xz',
   availableViews: ['model'],
   defaultCaseId: 'model',
   statusMessage: 'Preview is using the last valid model because the current JSON could not be parsed.',
@@ -22,7 +22,7 @@ const modelSnapshot: VisualizationSnapshot = {
   elements: [
     { id: 'E1', type: 'beam', nodeIds: ['1', '2'], material: 'M1', section: 'S1' },
   ],
-  loads: [{ nodeId: '2', kind: 'nodal', caseId: 'L1', vector: { x: 0, y: -10, z: 0 } }],
+  loads: [{ nodeId: '2', kind: 'nodal', caseId: 'L1', vector: { x: 0, y: 0, z: -10 } }],
   unsupportedElementTypes: [],
   cases: [
     {
@@ -59,5 +59,21 @@ describe('StructuralVisualizationModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'E1' }))
     expect(screen.getByText('Selected Element')).toBeInTheDocument()
     expect(screen.getByText(/Connected Nodes: 1 - 2/)).toBeInTheDocument()
+  })
+
+  it('opens a canonical 3D snapshot with the XY grid selected by default', () => {
+    render(
+      <StructuralVisualizationModal
+        locale="en"
+        onClose={() => undefined}
+        open
+        snapshot={{ ...modelSnapshot, dimension: 3, plane: 'xy' }}
+        t={t}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'XY' }).className).toContain('border-cyan-300')
+    expect(screen.getByRole('button', { name: 'XZ' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'YZ' })).toBeInTheDocument()
   })
 })

@@ -30,7 +30,7 @@ const PLANE_LABELS: Record<VisualizationPlane, MessageKey> = {
   yz: 'visualizationPlaneYZ',
 }
 
-const PLANE_OPTIONS: VisualizationPlane[] = ['xz', 'xy', 'yz']
+const PLANE_OPTIONS: VisualizationPlane[] = ['xy', 'xz', 'yz']
 
 export function VisualizationModalShell({
   open,
@@ -52,6 +52,10 @@ export function VisualizationModalShell({
 
   const availableViews = useMemo(
     (): VisualizationViewMode[] => snapshot?.availableViews || ['model', 'deformed', 'forces', 'reactions'],
+    [snapshot]
+  )
+  const availablePlanes = useMemo(
+    (): VisualizationPlane[] => snapshot?.dimension === 2 ? [snapshot.plane] : PLANE_OPTIONS,
     [snapshot]
   )
 
@@ -192,7 +196,7 @@ export function VisualizationModalShell({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('visualizationGridPlane')}</span>
-              {PLANE_OPTIONS.map((plane) => (
+              {availablePlanes.map((plane) => (
                 <button
                   key={plane}
                   className={cn(

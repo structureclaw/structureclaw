@@ -22,10 +22,16 @@ export type VisualizationExtensionMap = Partial<Record<VisualizationExtensionId,
 export type VisualizationSource = 'model' | 'result'
 export type VisualizationPlane = 'xy' | 'xz' | 'yz'
 
-type VisualizationVector3 = {
+export type VisualizationVector3 = {
   x: number
   y: number
   z: number
+}
+
+export type VisualizationLocalAxes = {
+  x: VisualizationVector3
+  y: VisualizationVector3
+  z: VisualizationVector3
 }
 
 export type VisualizationFloorLoadComponent = {
@@ -63,6 +69,7 @@ export type VisualizationElement = {
   nodeIds: string[]
   material?: string
   section?: string
+  localAxes?: VisualizationLocalAxes
 }
 
 export type VisualizationLoad = {
@@ -70,13 +77,16 @@ export type VisualizationLoad = {
   vector: VisualizationVector3
   caseId?: string
   elementId?: string
-  kind?: 'nodal' | 'distributed' | 'area'
+  kind?: 'nodal' | 'moment' | 'distributed' | 'area'
   storyId?: string
   label?: string
   intensity?: number
   area?: number
   polygon?: VisualizationVector3[]
   components?: VisualizationFloorLoadComponent[]
+  /** Reference frame of the source model load; vector is always global for rendering. */
+  referenceFrame?: 'global' | 'element-local'
+  sourceVector?: VisualizationVector3
 }
 
 export type VisualizationCase = {
@@ -94,6 +104,7 @@ export type VisualizationSnapshot = {
   dimension: 2 | 3
   plane: VisualizationPlane
   coordinateSemantics?: string
+  coordinateContractVersion?: number
   analysisType?: string
   availableViews: VisualizationViewMode[]
   defaultCaseId: string

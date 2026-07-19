@@ -13,7 +13,7 @@ function makeSnapshot(overrides: Partial<VisualizationSnapshot> = {}): Visualiza
     title: 'Test',
     source: 'model',
     dimension: 2,
-    plane: 'xy',
+    plane: 'xz',
     availableViews: ['model', 'deformed', 'forces'],
     defaultCaseId: 'model',
     nodes: [],

@@ -63,10 +63,31 @@ const mockSkills = [
   },
 ] as const
 
+const coordinateSystem2d = {
+  semantics: 'global-z-up',
+  version: 1,
+  dimension: '2d',
+  plane: 'xz',
+  dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+} as const
+
+const resultCoordinateMeta2d = {
+  coordinateSemantics: 'global-z-up',
+  coordinateContractVersion: 1,
+  dimension: '2d',
+  plane: 'xz',
+  dofOrder: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+  activeDofs: ['ux', 'uz', 'ry'],
+  nodalResultFrame: 'global',
+  elementForceFrame: 'element-local',
+} as const
+
 const sampleModelJson = JSON.stringify({
-  schema_version: '1.0.0',
+  schema_version: '2.0.0',
+  coordinate_system: coordinateSystem2d,
   metadata: {
     coordinateSemantics: 'global-z-up',
+    coordinateContractVersion: 1,
     frameDimension: '2d',
     inferredType: 'frame',
   },
@@ -77,7 +98,7 @@ const sampleModelJson = JSON.stringify({
   elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
   materials: [{ id: 'M1', name: 'Steel', E: 200000, nu: 0.3, rho: 7850 }],
   sections: [{ id: 'S1', area: 1 }],
-  load_cases: [{ id: 'D', type: 'dead', loads: [{ node: '2', fz: -10 }] }],
+  load_cases: [{ id: 'D', type: 'dead', loads: [{ node: '2', fz: -10, reference_frame: 'global' }] }],
 })
 
 const sampleAnalysisResult = {
@@ -87,6 +108,7 @@ const sampleAnalysisResult = {
   analysis: {
     success: true,
     meta: {
+      ...resultCoordinateMeta2d,
       analysisType: 'static',
       engineName: 'StructureClaw Analysis Engine',
       engineVersion: '0.1.0',
@@ -142,6 +164,7 @@ const sampleSeismicResult = {
   analysis: {
     success: true,
     meta: {
+      ...resultCoordinateMeta2d,
       analysisType: 'seismic',
       engineName: 'OpenSees',
       engineVersion: '0.1.0',
@@ -235,6 +258,7 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
   dimension: 2,
   plane: 'xz',
   coordinateSemantics: 'global-z-up',
+  coordinateContractVersion: 1,
   availableViews: ['model', 'deformed', 'forces', 'reactions'],
   defaultCaseId: 'result',
   nodes: [
@@ -242,9 +266,27 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
     { id: '2', position: { x: 6, y: 0, z: 0 } },
   ],
   elements: [
-    { id: 'E1', type: 'beam', nodeIds: ['1', '2'], material: 'M1', section: 'S1' },
+    {
+      id: 'E1',
+      type: 'beam',
+      nodeIds: ['1', '2'],
+      material: 'M1',
+      section: 'S1',
+      localAxes: {
+        x: { x: 1, y: 0, z: 0 },
+        y: { x: 0, y: 1, z: 0 },
+        z: { x: 0, y: 0, z: 1 },
+      },
+    },
   ],
-  loads: [{ nodeId: '2', caseId: 'D', vector: { x: 0, y: 0, z: -10 } }],
+  loads: [{
+    nodeId: '2',
+    caseId: 'D',
+    kind: 'nodal',
+    vector: { x: 0, y: 0, z: -10 },
+    sourceVector: { x: 0, y: 0, z: -10 },
+    referenceFrame: 'global',
+  }],
   unsupportedElementTypes: [],
   cases: [
     {
@@ -1209,7 +1251,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await openResultsContextPanel()
 
     const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
-    expect(modelInput.value).toContain('"schema_version": "1.0.0"')
+    expect(modelInput.value).toContain('"schema_version": "2.0.0"')
     expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: /Report|报告/ }))
     expect(screen.getByText('Archived summary')).toBeInTheDocument()
@@ -2368,7 +2410,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
     if (!hasLlmKey) return
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     const synchronizedModel = {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
+      coordinate_system: coordinateSystem2d,
+      metadata: {
+        coordinateSemantics: 'global-z-up',
+        coordinateContractVersion: 1,
+        frameDimension: '2d',
+      },
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
         { id: '2', x: 3, y: 0, z: 0 },
@@ -2376,7 +2424,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
       materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
       sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } }],
-      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fz: -10 }] }],
+      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fz: -10, reference_frame: 'global' }] }],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     }
 
@@ -2438,7 +2486,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Context|工程上下文/ }))
     const modelInput = await screen.findByPlaceholderText(modelJsonPlaceholderPattern)
     await waitFor(() => {
-      expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
+      expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "2.0.0"')
     })
 
     expect((modelInput as HTMLTextAreaElement).value).toContain('"nodes"')

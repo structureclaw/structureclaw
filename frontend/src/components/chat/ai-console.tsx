@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
+import { isCanonicalVisualizationSnapshot } from '@/components/visualization/normalization'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import {
@@ -910,12 +911,39 @@ function toModelText(model?: Record<string, unknown> | null) {
 }
 
 function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | null): Record<string, unknown> | null {
-  if (!snapshot) {
+  if (!snapshot || isStaleVisualizationSnapshot(snapshot)) {
+    return null
+  }
+  // Area-load polygons cannot be losslessly reconstructed from the compact
+  // projection snapshot. Prefer no fallback model to a structurally different one.
+  if (snapshot.loads.some((load) => load.kind === 'area')) {
     return null
   }
 
+  const dimension = snapshot.dimension === 3 ? '3d' : '2d'
+  const elementReferenceVectors = dimension === '3d'
+    ? Object.fromEntries(snapshot.elements.flatMap((element) => (
+        element.localAxes
+          ? [[element.id, [element.localAxes.z.x, element.localAxes.z.y, element.localAxes.z.z]]]
+          : []
+      )))
+    : {}
   const model: Record<string, unknown> = {
     schema_version: '2.0.0',
+    coordinate_system: {
+      semantics: CANONICAL_COORDINATE_SEMANTICS,
+      version: 1,
+      dimension,
+      plane: dimension === '2d' ? 'xz' : null,
+      dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+    },
+    metadata: {
+      coordinateSemantics: CANONICAL_COORDINATE_SEMANTICS,
+      coordinateContractVersion: 1,
+      frameDimension: dimension,
+      source: 'visualization-projection',
+      ...(Object.keys(elementReferenceVectors).length > 0 ? { elementReferenceVectors } : {}),
+    },
     nodes: snapshot.nodes.map((node) => ({
       id: node.id,
       x: node.position.x,
@@ -932,23 +960,35 @@ function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | nul
     })),
   }
 
-  if (snapshot.coordinateSemantics === 'global-z-up') {
-    model.metadata = {
-      coordinateSemantics: 'global-z-up',
-      frameDimension: snapshot.dimension === 3 ? '3d' : '2d',
-      source: 'visualization-snapshot',
-    }
-  }
-
   if (Array.isArray(snapshot.loads) && snapshot.loads.length > 0) {
     const grouped = new Map<string, Array<Record<string, unknown>>>()
     snapshot.loads.forEach((load) => {
       const key = load.caseId || 'default'
       const bucket = grouped.get(key) || []
       if (load.kind === 'distributed' && load.elementId) {
-        bucket.push({ element: load.elementId, wy: load.vector.y, wz: load.vector.z })
+        bucket.push({
+          element: load.elementId,
+          wx: load.vector.x,
+          wy: load.vector.y,
+          wz: load.vector.z,
+          reference_frame: 'global',
+        })
+      } else if (load.kind === 'moment' && load.nodeId) {
+        bucket.push({
+          node: load.nodeId,
+          mx: load.vector.x,
+          my: load.vector.y,
+          mz: load.vector.z,
+          reference_frame: 'global',
+        })
       } else if (load.nodeId) {
-        bucket.push({ node: load.nodeId, fx: load.vector.x, fy: load.vector.y, fz: load.vector.z })
+        bucket.push({
+          node: load.nodeId,
+          fx: load.vector.x,
+          fy: load.vector.y,
+          fz: load.vector.z,
+          reference_frame: 'global',
+        })
       }
       grouped.set(key, bucket)
     })
@@ -1174,7 +1214,7 @@ function isStaleVisualizationSnapshot(snapshot?: VisualizationSnapshot | null) {
   // or chat-only conversations) must not trigger the stale-data wipe.
   if (!Array.isArray(snapshot.nodes) || snapshot.nodes.length === 0) return false
   if (!Array.isArray(snapshot.elements) || snapshot.elements.length === 0) return false
-  return snapshot.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS
+  return !isCanonicalVisualizationSnapshot(snapshot)
 }
 
 function isStaleStructuralResult(result: AgentResult | null | undefined) {
@@ -1183,15 +1223,38 @@ function isStaleStructuralResult(result: AgentResult | null | undefined) {
   if (!model) {
     return false
   }
-  if (!Array.isArray(model.nodes) || !Array.isArray(model.elements)) {
+  if (
+    !Array.isArray(model.nodes)
+    || !Array.isArray(model.elements)
+    || model.nodes.length === 0
+    || model.elements.length === 0
+  ) {
     return false
   }
-  const metadata = asRecord(model.metadata)
-  const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined
-  if (inferredType === 'unknown') {
-    return false
+  const modelSnapshot = buildVisualizationSnapshot({
+    title: 'Stored structural model validation',
+    model,
+    mode: 'model-only',
+  })
+  if (!modelSnapshot || !isCanonicalVisualizationSnapshot(modelSnapshot)) {
+    return true
   }
-  return metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS
+
+  const analysis = asRecord(extractAnalysis(normalized))
+  const data = asRecord(analysis?.data) || analysis
+  const resultMeta = asRecord(data?.meta) || asRecord(analysis?.meta)
+  const hasCoordinateSensitiveResults = Boolean(data && [
+    'displacements', 'reactions', 'forces', 'caseResults', 'envelopeTables', 'buckling',
+  ].some((key) => data[key] !== undefined)) || resultMeta?.coordinateSemantics !== undefined
+  if (!analysis || !hasCoordinateSensitiveResults) return false
+
+  const resultSnapshot = buildVisualizationSnapshot({
+    title: 'Stored structural result validation',
+    model,
+    analysis,
+    mode: 'analysis-result',
+  })
+  return !resultSnapshot || !isCanonicalVisualizationSnapshot(resultSnapshot)
 }
 
 function sanitizePersistedConversation(archived: PersistedConversation): PersistedConversation {

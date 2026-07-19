@@ -12,7 +12,7 @@ function makeSnapshot(overrides: Partial<VisualizationSnapshot> = {}): Visualiza
     title: 'Test Snapshot',
     source: 'model',
     dimension: 2,
-    plane: 'xy',
+    plane: 'xz',
     availableViews: ['model', 'deformed', 'forces', 'reactions'],
     defaultCaseId: 'model',
     nodes: [
@@ -32,7 +32,7 @@ const defaultProps = {
   snapshot: makeSnapshot() as VisualizationSnapshot | null,
   title: 'Test Modal',
   selectedView: 'model' as const,
-  selectedPlane: 'xy' as const,
+  selectedPlane: 'xz' as const,
   onViewChange: vi.fn(),
   onPlaneChange: vi.fn(),
   onClose: vi.fn(),
@@ -159,22 +159,34 @@ describe('VisualizationModalShell', () => {
     expect(onViewChange).toHaveBeenCalledWith('forces')
   })
 
-  it('renders plane buttons', () => {
+  it('locks canonical 2D snapshots to the XZ plane', () => {
     render(<VisualizationModalShell {...defaultProps} />)
     expect(screen.getByRole('button', { name: 'XZ' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'XY' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'YZ' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'XY' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'YZ' })).not.toBeInTheDocument()
   })
 
-  it('calls onPlaneChange when a plane button is clicked', () => {
+  it('calls onPlaneChange when a 3D plane button is clicked', () => {
     const onPlaneChange = vi.fn()
-    render(<VisualizationModalShell {...defaultProps} onPlaneChange={onPlaneChange} />)
+    const snapshot = makeSnapshot({ dimension: 3, plane: 'xy' })
+    render(<VisualizationModalShell {...defaultProps} snapshot={snapshot} selectedPlane="xy" onPlaneChange={onPlaneChange} />)
     fireEvent.click(screen.getByRole('button', { name: 'XZ' }))
     expect(onPlaneChange).toHaveBeenCalledWith('xz')
   })
 
-  it('applies active styling to the selected plane button', () => {
-    render(<VisualizationModalShell {...defaultProps} selectedPlane="yz" />)
+  it('orders 3D grid planes with the z-up default XY first', () => {
+    const snapshot = makeSnapshot({ dimension: 3, plane: 'xy' })
+    render(<VisualizationModalShell {...defaultProps} snapshot={snapshot} selectedPlane="xy" />)
+    const labels = screen.getAllByRole('button')
+      .map((button) => button.textContent?.trim())
+      .filter((label) => label === 'XY' || label === 'XZ' || label === 'YZ')
+
+    expect(labels).toEqual(['XY', 'XZ', 'YZ'])
+  })
+
+  it('applies active styling to the selected 3D plane button', () => {
+    const snapshot = makeSnapshot({ dimension: 3, plane: 'xy' })
+    render(<VisualizationModalShell {...defaultProps} snapshot={snapshot} selectedPlane="yz" />)
     const yzButton = screen.getByRole('button', { name: 'YZ' })
     expect(yzButton.className).toContain('border-cyan-300')
   })
