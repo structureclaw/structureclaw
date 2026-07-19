@@ -88,9 +88,9 @@ def validate_opensees_runtime_and_routing():
         "schema_version": "2.0.0",
         "coordinate_system": canonical_coordinate_system(),
         "nodes": [
-            {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, False, False]},
+            {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, False, False, False]},
             {"id": "2", "x": 3.0, "y": 0.0, "z": 0.0},
-            {"id": "3", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [False, True, True, True, False, False]},
+            {"id": "3", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [False, True, True, False, False, False]},
         ],
         "elements": [
             {"id": "1", "type": "beam", "nodes": ["1", "2"], "material": "1", "section": "1"},

@@ -311,7 +311,7 @@ class NodeV2(BaseModel):
         default=None,
         min_length=6,
         max_length=6,
-        description="[ux, uy, uz, rx, ry, rz]",
+        description="[ux, uy, uz, rx, ry, rz]; true=restrained, false=free",
     )
     story: Optional[str] = Field(default=None, description="所属楼层 id")
 

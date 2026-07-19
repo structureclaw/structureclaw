@@ -408,6 +408,17 @@ class TestMigration:
             model = StructureModelV2(**v2)
             assert model.schema_version == "2.0.0", f"Migration failed for {fname.name}"
 
+    def test_simply_supported_beam_migrates_with_canonical_pin_and_roller(self):
+        v1 = _load_json("model_21_simply_supported_beam.json")
+        migrated = migrate_v1_to_v2(v1)
+
+        assert migrated["coordinate_system"]["dimension"] == "2d"
+        assert migrated["coordinate_system"]["plane"] == "xz"
+        assert migrated["nodes"][0]["restraints"] == [True, True, True, False, False, False]
+        assert migrated["nodes"][2]["restraints"] == [False, True, True, False, False, False]
+        assert migrated["load_cases"][0]["loads"][0]["fz"] == -20
+        StructureModelV2.model_validate(migrated)
+
     def test_already_v2_data_migrates_as_noop(self):
         """Migrating a 2.0.0 payload should preserve schema_version."""
         v2_data = _load_json("model_13_v2_rc_frame.json", v2=True)

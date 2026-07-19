@@ -15,6 +15,9 @@ describe('generic LLM model builder', () => {
     expect(prompt).toContain('point forces are kN');
     expect(prompt).toContain('distributed member loads are kN/m');
     expect(prompt).toContain('global-z-up coordinates');
+    expect(prompt).toContain('true means restrained and false means free');
+    expect(prompt).toContain('pinned left support [true,true,true,false,false,false]');
+    expect(prompt).toContain('X-direction roller at the right support [false,true,true,false,false,false]');
     expect(prompt).toContain('Create explicit nodes at supports');
     expect(prompt).toContain('check the total applied load');
     expect(prompt).toContain('seismicMemberEvidence');

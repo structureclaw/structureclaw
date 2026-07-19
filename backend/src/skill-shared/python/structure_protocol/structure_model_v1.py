@@ -12,7 +12,7 @@ class Node(BaseModel):
         default=None,
         min_length=6,
         max_length=6,
-        description="[ux, uy, uz, rx, ry, rz]",
+        description="[ux, uy, uz, rx, ry, rz]; true=restrained, false=free",
     )
 
 
