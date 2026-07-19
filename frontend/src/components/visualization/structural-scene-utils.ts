@@ -27,6 +27,29 @@ export function classifySupport(restraints: boolean[] | undefined, dimension: 2 
   return 'partial'
 }
 
+export function getProjectedRollerAxis(
+  kind: SupportKind,
+  plane: VisualizationPlane,
+  dimension: 2 | 3
+) {
+  const sourceAxis = kind === 'roller-x'
+    ? new THREE.Vector3(1, 0, 0)
+    : kind === 'roller-y'
+      ? new THREE.Vector3(0, 1, 0)
+      : kind === 'roller-z'
+        ? new THREE.Vector3(0, 0, 1)
+        : null
+  if (!sourceAxis) {
+    return null
+  }
+  const projected = projectPosition(sourceAxis, plane, dimension).normalize()
+  return new THREE.Vector3(
+    Math.abs(projected.x) < 1e-12 ? 0 : projected.x,
+    Math.abs(projected.y) < 1e-12 ? 0 : projected.y,
+    Math.abs(projected.z) < 1e-12 ? 0 : projected.z
+  )
+}
+
 export function getCaseNodeDisplacement(activeCase: VisualizationCase, nodeId: string) {
   const displacement = activeCase.nodeResults[nodeId]?.displacement
   return {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { classifySupport, getAdaptiveGridConfig, getNodeLabelOffset, getNodeReactionMomentMagnitude, getPlaneCameraFrame, getPlaneCameraPreset, getSnapshotCenter, projectPosition } from '@/components/visualization/structural-scene-utils'
+import { classifySupport, getAdaptiveGridConfig, getNodeLabelOffset, getNodeReactionMomentMagnitude, getPlaneCameraFrame, getPlaneCameraPreset, getProjectedRollerAxis, getSnapshotCenter, projectPosition } from '@/components/visualization/structural-scene-utils'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 
 const sample3dSnapshot: VisualizationSnapshot = {
@@ -30,6 +30,18 @@ describe('structural-scene-utils', () => {
     expect(classifySupport([true, true, false, false, false, false], 3)).toBe('roller-z')
     expect(classifySupport([true, false, false, false, true, false], 3)).toBe('partial')
     expect(classifySupport(undefined, 3)).toBe('none')
+  })
+
+  it('projects every roller freedom axis with the selected 3d source plane', () => {
+    expect(getProjectedRollerAxis('roller-x', 'xy', 3)?.toArray()).toEqual([1, 0, 0])
+    expect(getProjectedRollerAxis('roller-y', 'xy', 3)?.toArray()).toEqual([0, 1, 0])
+    expect(getProjectedRollerAxis('roller-z', 'xy', 3)?.toArray()).toEqual([0, 0, 1])
+    expect(getProjectedRollerAxis('roller-y', 'xz', 3)?.toArray()).toEqual([0, 0, 1])
+    expect(getProjectedRollerAxis('roller-z', 'xz', 3)?.toArray()).toEqual([0, -1, 0])
+    expect(getProjectedRollerAxis('roller-x', 'yz', 3)?.toArray()).toEqual([0, 0, 1])
+    expect(getProjectedRollerAxis('roller-y', 'yz', 3)?.toArray()).toEqual([1, 0, 0])
+    expect(getProjectedRollerAxis('roller-z', 'yz', 3)?.toArray()).toEqual([0, 1, 0])
+    expect(getProjectedRollerAxis('pinned', 'xy', 3)).toBeNull()
   })
 
   it('lays the selected 3d source plane onto the horizontal render ground', () => {

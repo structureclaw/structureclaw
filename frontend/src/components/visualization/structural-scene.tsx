@@ -11,6 +11,7 @@ import {
   type ForceMetric,
   type SupportKind,
   classifySupport,
+  getProjectedRollerAxis,
   getCaseNodeDisplacement,
   getElementMetric,
   getNodeReactionMagnitude,
@@ -205,15 +206,30 @@ function VectorArrow({
   )
 }
 
-function SupportMarker({ kind, origin }: { kind: SupportKind; origin: THREE.Vector3 }) {
+function SupportMarker({
+  dimension,
+  kind,
+  origin,
+  plane,
+}: {
+  dimension: 2 | 3
+  kind: SupportKind
+  origin: THREE.Vector3
+  plane: VisualizationPlane
+}) {
   if (kind === 'none') {
     return null
   }
   const color = '#94a3b8'
-  const isRoller = kind === 'roller-x' || kind === 'roller-y'
-  const rollerOffsets = kind === 'roller-y'
-    ? [[0, -0.13, -0.42], [0, 0.13, -0.42]]
-    : [[-0.13, 0, -0.42], [0.13, 0, -0.42]]
+  const rollerAxis = getProjectedRollerAxis(kind, plane, dimension)
+  const isRoller = rollerAxis !== null
+  const rollerOffsets: Array<[number, number, number]> = rollerAxis
+    ? [-0.13, 0.13].map((offset) => [
+        rollerAxis.x * offset,
+        rollerAxis.y * offset,
+        -0.42 + rollerAxis.z * offset,
+      ])
+    : []
 
   if (kind === 'fixed') {
     return (
@@ -912,7 +928,12 @@ function SceneContent({
 
             return (
               <group key={entry.id}>
-                <SupportMarker kind={supportKind} origin={supportPosition} />
+                <SupportMarker
+                  dimension={snapshot.dimension}
+                  kind={supportKind}
+                  origin={supportPosition}
+                  plane={plane}
+                />
                 {selectedNodeId === entry.id ? (
                   <mesh position={finalPosition.toArray()}>
                     <sphereGeometry args={[snapshot.dimension === 3 ? 0.34 : 0.28, 24, 24]} />
