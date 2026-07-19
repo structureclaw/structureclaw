@@ -6,6 +6,7 @@ import {
   buildDirectSeismicReport,
   resolveDirectChinaSeismicDesignCode,
   shouldRunDirectSeismicCodeCheck,
+  withDirectModelCoordinateContract,
 } from '../dist/services/analysis.js';
 
 const originalFindUnique = prisma.analysis.findUnique;
@@ -18,6 +19,16 @@ afterEach(() => {
 });
 
 describe('AnalysisService direct China seismic workflow', () => {
+  test('rejects untyped legacy direct models instead of guessing 2D or 3D from coordinates', () => {
+    expect(() => withDirectModelCoordinateContract({
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 0 },
+        { id: 'N2', x: 0, y: 4, z: 0 },
+      ],
+      elements: [{ id: 'E1', type: 'column', nodes: ['N1', 'N2'] }],
+    })).toThrow(/cannot be classified safely/);
+  });
+
   test('detects when direct seismic analysis should run GB50011 code-check', () => {
     expect(shouldRunDirectSeismicCodeCheck('seismic', {
       seismicWorkflow: { methodPreference: 'response_spectrum' },
@@ -34,8 +45,18 @@ describe('AnalysisService direct China seismic workflow', () => {
 
   test('builds a code-check model from the persisted analysis model', () => {
     const model = buildDirectAnalysisModelForCodeCheck({
-      nodes: [{ id: 'N1' }],
-      elements: [{ id: 'E1' }],
+      coordinateSystem: {
+        semantics: 'global-z-up',
+        version: 1,
+        dimension: '2d',
+        plane: 'xz',
+        dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+      },
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 0 },
+        { id: 'N2', x: 1, y: 0, z: 0 },
+      ],
+      elements: [{ id: 'E1', type: 'beam', nodes: ['N1', 'N2'] }],
       materials: [{ id: 'C30' }],
       sections: [{ id: 'S1' }],
     });
@@ -43,8 +64,18 @@ describe('AnalysisService direct China seismic workflow', () => {
     expect(model).toMatchObject({
       schemaVersion: '2.0.0',
       schema_version: '2.0.0',
-      nodes: [{ id: 'N1' }],
-      elements: [{ id: 'E1' }],
+      coordinate_system: {
+        semantics: 'global-z-up',
+        version: 1,
+        dimension: '2d',
+        plane: 'xz',
+        dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+      },
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 0 },
+        { id: 'N2', x: 1, y: 0, z: 0 },
+      ],
+      elements: [{ id: 'E1', type: 'beam', nodes: ['N1', 'N2'] }],
       materials: [{ id: 'C30' }],
       sections: [{ id: 'S1' }],
       loadCases: [],
@@ -123,7 +154,17 @@ describe('AnalysisService direct China seismic workflow', () => {
       summary: { total: 2, passed: 2, failed: 0, warnings: 0 },
     };
     const persistedModel = {
-      nodes: [{ id: 'N1', x: 0, y: 0, z: 0 }],
+      coordinateSystem: {
+        semantics: 'global-z-up',
+        version: 1,
+        dimension: '2d',
+        plane: 'xz',
+        dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+      },
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 0 },
+        { id: 'N2', x: 1, y: 0, z: 0 },
+      ],
       elements: [{ id: 'E1', type: 'beam', nodes: ['N1', 'N2'] }],
       materials: [],
       sections: [],
@@ -218,6 +259,13 @@ describe('AnalysisService direct China seismic workflow', () => {
         designCode: 'GB50017',
       },
       model: {
+        coordinateSystem: {
+          semantics: 'global-z-up',
+          version: 1,
+          dimension: '2d',
+          plane: 'xz',
+          dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+        },
         nodes: [],
         elements: [],
         materials: [],

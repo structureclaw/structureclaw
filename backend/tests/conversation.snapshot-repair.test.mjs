@@ -32,13 +32,13 @@ function makeSnapshot(source) {
   };
 }
 
-describe('ConversationService snapshot repair', () => {
+describe('ConversationService snapshot compatibility', () => {
   beforeEach(() => {
     prisma.conversation.findUnique = async () => null;
     prisma.conversation.update = async ({ data }) => data;
   });
 
-  test('repairs metadata-free generic snapshots so older conversations remain restorable', async () => {
+  test('marks metadata-free snapshots stale instead of guessing their coordinate system', async () => {
     let updatePayload;
     prisma.conversation.findUnique = async () => ({
       modelSnapshot: makeSnapshot('model'),
@@ -70,12 +70,10 @@ describe('ConversationService snapshot repair', () => {
     const svc = new ConversationService();
     const snapshot = await svc.getConversationSnapshot('conv-generic-repair');
 
-    expect(snapshot?.modelSnapshot?.coordinateSemantics).toBe('global-z-up');
-    expect(snapshot?.resultSnapshot?.coordinateSemantics).toBe('global-z-up');
-    expect(snapshot?.latestResult?.model?.metadata?.coordinateSemantics).toBe('global-z-up');
-    expect(snapshot?.latestResult?.model?.metadata?.frameDimension).toBe('2d');
-    expect(snapshot?.staleStructuralData).toBe(false);
-    expect(updatePayload?.modelSnapshot?.coordinateSemantics).toBe('global-z-up');
-    expect(updatePayload?.resultSnapshot?.coordinateSemantics).toBe('global-z-up');
+    expect(snapshot?.modelSnapshot?.coordinateSemantics).toBeUndefined();
+    expect(snapshot?.resultSnapshot?.coordinateSemantics).toBeUndefined();
+    expect(snapshot?.latestResult?.model?.coordinate_system).toBeUndefined();
+    expect(snapshot?.staleStructuralData).toBe(true);
+    expect(updatePayload).toBeUndefined();
   });
 });

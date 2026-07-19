@@ -22,15 +22,37 @@ describe('result-postprocess entry', () => {
     expect(extractUnitSystem({})).toBe('SI');
   });
 
-  test('extractCoordinateSystem returns coordinate system from metadata', () => {
-    expect(extractCoordinateSystem({ metadata: { coordinateSystem: 'global-y-up' } })).toBe('global-y-up');
-    expect(extractCoordinateSystem({})).toBe('global-z-up');
+  test('extractCoordinateSystem requires the complete canonical result contract', () => {
+    const meta = {
+      coordinateSemantics: 'global-z-up',
+      coordinateContractVersion: 1,
+      dimension: '2d',
+      plane: 'xz',
+      dofOrder: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+      activeDofs: ['ux', 'uz', 'ry'],
+      nodalResultFrame: 'global',
+      elementForceFrame: 'element-local',
+    };
+    expect(extractCoordinateSystem({ meta, data: { meta } })).toBe('global-z-up');
+    expect(extractCoordinateSystem({ metadata: { coordinateSystem: 'global-y-up' } })).toBeUndefined();
+    expect(extractCoordinateSystem({})).toBeUndefined();
+    expect(extractCoordinateSystem({ meta, data: { meta: { ...meta, plane: 'xy' } } })).toBeUndefined();
   });
 
   test('buildPostprocessedResultArtifact produces complete artifact', () => {
     const analysis = {
       data: { utilizationByElement: { E1: 0.9 }, envelope: { maxAbsDisplacement: 12.5 } },
-      metadata: { unitSystem: 'SI', coordinateSystem: 'global-z-up' },
+      metadata: { unitSystem: 'SI' },
+      meta: {
+        coordinateSemantics: 'global-z-up',
+        coordinateContractVersion: 1,
+        dimension: '3d',
+        plane: null,
+        dofOrder: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+        activeDofs: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+        nodalResultFrame: 'global',
+        elementForceFrame: 'element-local',
+      },
     };
     const ref = { artifactId: 'ar-1', revision: 1 };
     const artifact = buildPostprocessedResultArtifact(analysis, ref);

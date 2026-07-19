@@ -95,12 +95,38 @@ export function extractUnitSystem(analysis: unknown): string {
   return 'SI';
 }
 
-export function extractCoordinateSystem(analysis: unknown): string {
+export function extractCoordinateSystem(analysis: unknown): string | undefined {
   const payload = analysis && typeof analysis === 'object' ? analysis as Record<string, unknown> : {};
-  const metadata = payload['metadata'];
-  if (metadata && typeof metadata === 'object') {
-    const meta = metadata as Record<string, unknown>;
-    if (typeof meta['coordinateSystem'] === 'string') return meta['coordinateSystem'];
+  const data = payload['data'] && typeof payload['data'] === 'object'
+    ? payload['data'] as Record<string, unknown>
+    : {};
+  const declarations = [payload['meta'], data['meta']]
+    .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
+    .filter((meta) => [
+      'coordinateSemantics', 'coordinateContractVersion', 'dimension', 'plane',
+      'dofOrder', 'activeDofs', 'nodalResultFrame', 'elementForceFrame',
+    ].some((key) => meta[key] !== undefined));
+  if (!declarations.length) return undefined;
+
+  const dofOrder = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'];
+  const matches = (value: unknown, expected: string[]) => (
+    Array.isArray(value)
+    && value.length === expected.length
+    && value.every((entry, index) => entry === expected[index])
+  );
+  for (const meta of declarations) {
+    const dimension = meta['dimension'];
+    const activeDofs = dimension === '2d' ? ['ux', 'uz', 'ry'] : dofOrder;
+    if (
+      meta['coordinateSemantics'] !== 'global-z-up'
+      || meta['coordinateContractVersion'] !== 1
+      || (dimension !== '2d' && dimension !== '3d')
+      || meta['plane'] !== (dimension === '2d' ? 'xz' : null)
+      || !matches(meta['dofOrder'], dofOrder)
+      || !matches(meta['activeDofs'], activeDofs)
+      || meta['nodalResultFrame'] !== 'global'
+      || meta['elementForceFrame'] !== 'element-local'
+    ) return undefined;
   }
   return 'global-z-up';
 }

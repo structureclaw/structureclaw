@@ -11,9 +11,16 @@ import { resolveCodeCheckRule } from '../agent-skills/code-check/registry.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import { buildDefaultReportNarrative } from '../agent-runtime/report-template.js';
 import type { AppLocale } from './locale.js';
+import {
+  assertCanonicalCoordinateModel,
+  buildStructuralCoordinateSystem,
+  STRUCTURAL_COORDINATE_CONTRACT_VERSION,
+  STRUCTURAL_COORDINATE_SEMANTICS,
+} from '../agent-runtime/coordinate-semantics.js';
 
 export interface CreateModelParams {
   name: string;
+  coordinate_system: ReturnType<typeof buildStructuralCoordinateSystem>;
   nodes: any[];
   elements: any[];
   materials: any[];
@@ -35,6 +42,36 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+export function withDirectModelCoordinateContract<T extends Record<string, unknown>>(model: T): T & {
+  coordinate_system: ReturnType<typeof buildStructuralCoordinateSystem>;
+  metadata: Record<string, unknown>;
+} {
+  const coordinateSystem = asRecord(model.coordinate_system ?? model.coordinateSystem);
+  const dimension = coordinateSystem.dimension;
+  if (dimension !== '2d' && dimension !== '3d') {
+    throw new Error('Direct structural models must include a typed coordinate_system contract; legacy geometry cannot be classified safely from coordinates alone');
+  }
+  const metadata = asRecord(model.metadata);
+  const canonical = {
+    ...model,
+    schema_version: '2.0.0',
+    unit_system: typeof model.unit_system === 'string' ? model.unit_system : 'SI',
+    coordinate_system: coordinateSystem,
+    metadata: {
+      ...metadata,
+      coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
+      coordinateContractVersion: STRUCTURAL_COORDINATE_CONTRACT_VERSION,
+      frameDimension: dimension,
+      source: typeof metadata.source === 'string' ? metadata.source : 'direct-analysis-api',
+    },
+  };
+  assertCanonicalCoordinateModel(canonical, dimension);
+  return {
+    ...canonical,
+    coordinate_system: buildStructuralCoordinateSystem(dimension),
+  };
 }
 
 function nonEmptyRecord(value: unknown): Record<string, unknown> | undefined {
@@ -157,21 +194,26 @@ export function shouldRunDirectSeismicCodeCheck(
 }
 
 export function buildDirectAnalysisModelForCodeCheck(model: {
+  coordinate_system?: unknown;
+  coordinateSystem?: unknown;
   nodes: unknown;
   elements: unknown;
   materials: unknown;
   sections: unknown;
 }): Record<string, unknown> {
-  return {
+  return withDirectModelCoordinateContract({
     schemaVersion: '2.0.0',
     schema_version: '2.0.0',
+    coordinate_system: model.coordinate_system ?? model.coordinateSystem,
     nodes: Array.isArray(model.nodes) ? model.nodes : [],
     elements: Array.isArray(model.elements) ? model.elements : [],
     materials: Array.isArray(model.materials) ? model.materials : [],
     sections: Array.isArray(model.sections) ? model.sections : [],
     loadCases: [],
     loadCombinations: [],
-  };
+    load_cases: [],
+    load_combinations: [],
+  });
 }
 
 export function resolveDirectChinaSeismicDesignCode(parameters: Record<string, unknown>): string {
@@ -204,6 +246,12 @@ export class AnalysisService {
   // 创建结构模型
   async createModel(params: CreateModelParams) {
     const conversationId = await ensureConversationId(params.conversationId, params.name);
+    const canonicalInput = withDirectModelCoordinateContract({
+      coordinate_system: params.coordinate_system,
+      nodes: params.nodes,
+      elements: params.elements,
+      load_cases: [],
+    });
 
     const model = await prisma.structuralModel.create({
       data: {
@@ -212,18 +260,20 @@ export class AnalysisService {
         elements: params.elements,
         materials: params.materials,
         sections: params.sections,
+        coordinateSystem: canonicalInput.coordinate_system,
         conversationId,
       },
     });
+    const canonicalModel = withDirectModelCoordinateContract(model as unknown as Record<string, unknown>);
 
     // 缓存模型数据
     await cache.setex(
       `model:${model.id}`,
       3600,
-      JSON.stringify(model)
+      JSON.stringify(canonicalModel)
     );
 
-    return model;
+    return canonicalModel;
   }
 
   // 获取模型
@@ -231,7 +281,8 @@ export class AnalysisService {
     // 先从缓存获取
     const cached = await cache.get(`model:${id}`);
     if (cached) {
-      return JSON.parse(cached);
+      const cachedModel = JSON.parse(cached) as Record<string, unknown>;
+      return withDirectModelCoordinateContract(cachedModel);
     }
 
     const model = await prisma.structuralModel.findUnique({
@@ -245,10 +296,13 @@ export class AnalysisService {
     });
 
     if (model) {
-      await cache.setex(`model:${id}`, 3600, JSON.stringify(model));
+      const modelRecord = model as unknown as Record<string, unknown>;
+      const canonicalModel = withDirectModelCoordinateContract(modelRecord);
+      await cache.setex(`model:${id}`, 3600, JSON.stringify(canonicalModel));
+      return canonicalModel;
     }
 
-    return model;
+    return null;
   }
 
   // 创建分析任务
@@ -282,16 +336,15 @@ export class AnalysisService {
     });
 
     try {
+      const persistedModel = {
+        ...analysis.model,
+        coordinate_system: analysis.model.coordinateSystem,
+      };
+      const canonicalAnalysisModel = withDirectModelCoordinateContract(persistedModel);
       const results = await this.executionService.analyze({
         type: analysis.type,
         engineId: (analysis.parameters as Record<string, unknown> | null)?.engineId,
-        model: {
-          schema_version: '1.0.0',
-          nodes: analysis.model.nodes,
-          elements: analysis.model.elements,
-          materials: analysis.model.materials,
-          sections: analysis.model.sections,
-        },
+        model: canonicalAnalysisModel,
         parameters: analysis.parameters,
       });
       if (results && results.success === false) {
@@ -308,7 +361,7 @@ export class AnalysisService {
       if (shouldRunSeismicCodeCheck) {
         const codeCheck = await this.runDirectSeismicCodeCheck({
           analysisId,
-          model: analysis.model,
+          model: canonicalAnalysisModel,
           analysisResults,
           parameters,
         });
@@ -353,6 +406,8 @@ export class AnalysisService {
   private async runDirectSeismicCodeCheck(options: {
     analysisId: string;
     model: {
+      coordinate_system?: unknown;
+      coordinateSystem?: unknown;
       nodes: unknown;
       elements: unknown;
       materials: unknown;

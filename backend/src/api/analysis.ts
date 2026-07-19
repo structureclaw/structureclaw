@@ -29,12 +29,33 @@ export const createAnalysisSchema = z.object({
 const createModelSchema = z.object({
   name: z.string().min(1),
   conversationId: z.string().optional(),
+  coordinate_system: z.object({
+    semantics: z.literal('global-z-up'),
+    version: z.literal(1),
+    dimension: z.enum(['2d', '3d']),
+    plane: z.union([z.literal('xz'), z.null()]),
+    dof_order: z.tuple([
+      z.literal('ux'),
+      z.literal('uy'),
+      z.literal('uz'),
+      z.literal('rx'),
+      z.literal('ry'),
+      z.literal('rz'),
+    ]),
+  }).superRefine((value, context) => {
+    if (value.dimension === '2d' && value.plane !== 'xz') {
+      context.addIssue({ code: 'custom', message: 'Canonical 2-D models must use the X-Z plane' });
+    }
+    if (value.dimension === '3d' && value.plane !== null) {
+      context.addIssue({ code: 'custom', message: 'Canonical 3-D models cannot declare a 2-D plane' });
+    }
+  }),
   nodes: z.array(z.object({
     id: z.string(),
     x: z.number(),
     y: z.number(),
     z: z.number(),
-    restraints: z.array(z.boolean()).optional(),
+    restraints: z.array(z.boolean()).length(6).optional(),
   })),
   elements: z.array(z.object({
     id: z.string(),

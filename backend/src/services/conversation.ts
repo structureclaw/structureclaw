@@ -1,6 +1,10 @@
 import { prisma } from '../utils/database.js';
 import type { JsonValue } from '../utils/json.js';
-import { STRUCTURAL_COORDINATE_SEMANTICS } from '../agent-runtime/coordinate-semantics.js';
+import {
+  assertCanonicalCoordinateModel,
+  STRUCTURAL_COORDINATE_CONTRACT_VERSION,
+  STRUCTURAL_COORDINATE_SEMANTICS,
+} from '../agent-runtime/coordinate-semantics.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
 /**
@@ -38,7 +42,16 @@ function getStructuralMetadata(payload: unknown): Record<string, unknown> | null
 function isStaleStructuralPayload(payload: unknown): boolean {
   const payloadRecord = asRecord(payload);
   if (hasSnapshotGeometry(payloadRecord)) {
-    return payloadRecord?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS;
+    const firstNode = asRecord((payloadRecord?.nodes as unknown[])[0]);
+    if (asRecord(firstNode?.position)) {
+      return !hasCanonicalVisualizationSnapshotContract(payloadRecord as Record<string, unknown>);
+    }
+    return !hasCanonicalModelContract(payloadRecord as Record<string, unknown>);
+  }
+
+  const nestedModel = asRecord(payloadRecord?.model);
+  if (hasSnapshotGeometry(nestedModel)) {
+    return !hasCanonicalModelContract(nestedModel as Record<string, unknown>);
   }
 
   const metadata = getStructuralMetadata(payload);
@@ -54,16 +67,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function hasModelGeometry(model: Record<string, unknown> | null): boolean {
-  return Boolean(
-    model
-    && Array.isArray(model.nodes)
-    && model.nodes.length > 0
-    && Array.isArray(model.elements)
-    && model.elements.length > 0
-  );
-}
-
 function hasSnapshotGeometry(snapshot: Record<string, unknown> | null): boolean {
   return Boolean(
     snapshot
@@ -74,101 +77,36 @@ function hasSnapshotGeometry(snapshot: Record<string, unknown> | null): boolean 
   );
 }
 
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+function hasCanonicalModelContract(model: Record<string, unknown>): boolean {
+  const coordinateSystem = asRecord(model.coordinate_system);
+  const dimension = coordinateSystem?.dimension;
+  if (dimension !== '2d' && dimension !== '3d') return false;
+  try {
+    assertCanonicalCoordinateModel(model, dimension);
+    return true;
+  } catch {
+    return false;
   }
-  if (typeof value === 'string') {
-    const parsed = Number(value.trim());
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
 }
 
-function inferFrameDimensionFromModel(model: Record<string, unknown>): '2d' | '3d' {
-  const nodes = Array.isArray(model.nodes) ? model.nodes : [];
-  const yValues = new Set<string>();
-  const zValues = new Set<string>();
-
-  nodes.forEach((node) => {
-    const record = asRecord(node);
-    const y = toFiniteNumber(record?.y);
-    const z = toFiniteNumber(record?.z);
-    if (y !== null) {
-      yValues.add(y.toFixed(6));
-    }
-    if (z !== null) {
-      zValues.add(z.toFixed(6));
-    }
+function hasCanonicalVisualizationSnapshotContract(snapshot: Record<string, unknown>): boolean {
+  const dimension = snapshot.dimension;
+  if (
+    snapshot.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS
+    || snapshot.coordinateContractVersion !== STRUCTURAL_COORDINATE_CONTRACT_VERSION
+    || (dimension !== 2 && dimension !== 3)
+    || (dimension === 2 && snapshot.plane !== 'xz')
+  ) {
+    return false;
+  }
+  const nodes = Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
+  return nodes.every((value) => {
+    const position = asRecord(asRecord(value)?.position);
+    if (!position) return false;
+    const coordinates = [position.x, position.y, position.z];
+    return coordinates.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+      && (dimension === 3 || Math.abs(position.y as number) <= 1e-9);
   });
-
-  return yValues.size > 1 && zValues.size > 1 ? '3d' : '2d';
-}
-
-function repairGenericLatestResult(latestResult: JsonValue | null): JsonValue | null {
-  const latestResultRecord = asRecord(latestResult);
-  const routing = asRecord(latestResultRecord?.routing);
-  if (routing?.structuralSkillId !== 'generic') {
-    return latestResult;
-  }
-
-  const model = asRecord(latestResultRecord?.model);
-  if (!hasModelGeometry(model)) {
-    return latestResult;
-  }
-
-  const currentMetadata = asRecord(model?.metadata);
-  if (currentMetadata?.coordinateSemantics === STRUCTURAL_COORDINATE_SEMANTICS) {
-    return latestResult;
-  }
-
-  const nextMetadata: Record<string, unknown> = {
-    ...(currentMetadata || {}),
-    coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-    frameDimension:
-      currentMetadata?.frameDimension === '2d' || currentMetadata?.frameDimension === '3d'
-        ? currentMetadata.frameDimension
-        : inferFrameDimensionFromModel(model!),
-  };
-
-  if (typeof nextMetadata.source !== 'string' || nextMetadata.source.trim().length === 0) {
-    nextMetadata.source = 'generic-llm-draft';
-  }
-
-  return {
-    ...latestResultRecord,
-    model: {
-      ...model,
-      metadata: nextMetadata,
-    },
-  } as JsonValue;
-}
-
-function repairVisualizationSnapshot(
-  snapshot: JsonValue | null,
-  model: Record<string, unknown> | null,
-): JsonValue | null {
-  const snapshotRecord = asRecord(snapshot);
-  if (!hasSnapshotGeometry(snapshotRecord) || snapshotRecord?.coordinateSemantics === STRUCTURAL_COORDINATE_SEMANTICS) {
-    return snapshot;
-  }
-
-  const metadata = asRecord(model?.metadata);
-  if (metadata?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS) {
-    return snapshot;
-  }
-
-  const expectedDimension = metadata.frameDimension === '3d' ? 3 : 2;
-  if (snapshotRecord?.dimension !== expectedDimension) {
-    return snapshot;
-  }
-
-  return {
-    ...snapshotRecord,
-    coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-  } as JsonValue;
 }
 
 function getDefaultConversationTitle(locale: AppLocale): string {
@@ -270,37 +208,15 @@ export class ConversationService {
 
     if (!conversation) return null;
 
-    const repairedLatestResult = repairGenericLatestResult(conversation.latestResult);
-    const repairedModel = asRecord(asRecord(repairedLatestResult)?.model);
-    const repairedModelSnapshot = repairVisualizationSnapshot(conversation.modelSnapshot, repairedModel);
-    const repairedResultSnapshot = repairVisualizationSnapshot(conversation.resultSnapshot, repairedModel);
-
-    const repaired =
-      repairedLatestResult !== conversation.latestResult
-      || repairedModelSnapshot !== conversation.modelSnapshot
-      || repairedResultSnapshot !== conversation.resultSnapshot;
-
-    if (repaired) {
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: {
-          updatedAt: new Date(),
-          modelSnapshot: repairedModelSnapshot,
-          resultSnapshot: repairedResultSnapshot,
-          latestResult: repairedLatestResult,
-        } as never,
-      });
-    }
-
     const staleStructuralData =
-      isStaleStructuralPayload(repairedModelSnapshot)
-      || isStaleStructuralPayload(repairedResultSnapshot)
-      || isStaleStructuralPayload(repairedLatestResult);
+      isStaleStructuralPayload(conversation.modelSnapshot)
+      || isStaleStructuralPayload(conversation.resultSnapshot)
+      || isStaleStructuralPayload(conversation.latestResult);
 
     return {
-      modelSnapshot: repairedModelSnapshot,
-      resultSnapshot: repairedResultSnapshot,
-      latestResult: repairedLatestResult,
+      modelSnapshot: conversation.modelSnapshot,
+      resultSnapshot: conversation.resultSnapshot,
+      latestResult: conversation.latestResult,
       staleStructuralData,
     };
   }

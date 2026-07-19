@@ -20,6 +20,7 @@ model StructuralModel {
   elements    Json
   materials   Json
   sections    Json
+  coordinateSystem Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
