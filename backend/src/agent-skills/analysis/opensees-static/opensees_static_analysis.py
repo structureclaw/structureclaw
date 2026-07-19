@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List
 
 import numpy as np
@@ -9,16 +10,62 @@ class OpenSeesStaticExecutor:
     def __init__(self, analyzer):
         self.analyzer = analyzer
 
+    @staticmethod
+    def _positive_section_property(section: Any, key: str, element_id: str) -> float:
+        try:
+            value = float(section.properties.get(key, 0.0))
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Element '{element_id}' section property {key} must be finite") from error
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"Element '{element_id}' requires section property {key} > 0")
+        return value
+
+    @staticmethod
+    def _material_moduli(material: Any, element_id: str) -> tuple[float, float]:
+        if material is None:
+            raise ValueError(f"Element '{element_id}' references an unavailable material")
+        try:
+            elastic_modulus = float(material.E) * 1000.0
+            poisson_ratio = float(material.nu)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Element '{element_id}' material properties must be finite") from error
+        if not math.isfinite(elastic_modulus) or elastic_modulus <= 0.0:
+            raise ValueError(f"Element '{element_id}' requires material E > 0")
+        if not math.isfinite(poisson_ratio) or poisson_ratio < 0.0 or poisson_ratio > 0.5:
+            raise ValueError(f"Element '{element_id}' requires 0 <= material nu <= 0.5")
+        return elastic_modulus, elastic_modulus / (2.0 * (1.0 + poisson_ratio))
+
+    @staticmethod
+    def _element_response_values(ops, element_tag: int, response: str, expected: int, element_id: str) -> List[float]:
+        raw = ops.eleResponse(element_tag, response)
+        if isinstance(raw, (list, tuple, np.ndarray)):
+            values = [float(value) for value in raw]
+        elif raw is None:
+            values = []
+        else:
+            values = [float(raw)]
+        if len(values) < expected or not all(math.isfinite(value) for value in values[:expected]):
+            raise ValueError(
+                f"OpenSees returned an invalid {response} response for element '{element_id}'"
+            )
+        return values[:expected]
+
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         import openseespy.opensees as ops
+        from coordinate_semantics import resolve_model_dimension
 
         ops.wipe()
-        if self.analyzer._select_opensees_planar_frame_mode(parameters):
+        dimension = resolve_model_dimension(self.analyzer.model)
+        if dimension == '2d':
+            if not self.analyzer._can_run_2d_frame_solver():
+                raise ValueError("Canonical 2-D OpenSees frame analysis does not support mixed frame/truss models")
             return self._run_2d_frame(parameters, ops)
         return self._run_3d_frame(parameters, ops)
 
     def _run_2d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
         plane = self.analyzer._select_opensees_planar_frame_mode(parameters) or 'xz'
+        if plane != 'xz':
+            raise ValueError("Canonical 2-D OpenSees analysis supports only the global X-Z plane")
         loads = self.analyzer._collect_nodal_loads(parameters)
 
         ops.model('basic', '-ndm', 2, '-ndf', 3)
@@ -28,10 +75,7 @@ class OpenSeesStaticExecutor:
             node_tag = self.analyzer._ops_node_tag(node.id)
             ops.node(node_tag, x_coord, y_coord)
             restraints = node.restraints or [False] * 6
-            if plane == 'xy':
-                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[1])), int(bool(restraints[5])))
-            else:
-                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
+            ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
 
         for elem in self.analyzer.model.elements:
             self._define_beam_element_2d(elem, ops)
@@ -52,45 +96,36 @@ class OpenSeesStaticExecutor:
             node_tag = self.analyzer._ops_node_tag(node.id)
             disp = ops.nodeDisp(node_tag)
             react = ops.nodeReaction(node_tag)
-            if plane == 'xy':
-                displacements[node.id] = {
-                    'ux': float(disp[0]),
-                    'uy': float(disp[1]),
-                    'uz': 0.0,
-                    'rx': 0.0,
-                    'ry': 0.0,
-                    'rz': float(disp[2]),
+            displacements[node.id] = {
+                'ux': float(disp[0]),
+                'uy': 0.0,
+                'uz': float(disp[1]),
+                'rx': 0.0,
+                'ry': float(disp[2]),
+                'rz': 0.0,
+            }
+            if any(node.restraints or []):
+                reactions[node.id] = {
+                    'fx': float(react[0]),
+                    'fz': float(react[1]),
+                    'my': float(react[2]),
                 }
-                if any(node.restraints or []):
-                    reactions[node.id] = {
-                        'fx': float(react[0]),
-                        'fy': float(react[1]),
-                        'mz': float(react[2]),
-                    }
-            else:
-                displacements[node.id] = {
-                    'ux': float(disp[0]),
-                    'uy': 0.0,
-                    'uz': float(disp[1]),
-                    'rx': 0.0,
-                    'ry': float(disp[2]),
-                    'rz': 0.0,
-                }
-                if any(node.restraints or []):
-                    reactions[node.id] = {
-                        'fx': float(react[0]),
-                        'fz': float(react[1]),
-                        'my': float(react[2]),
-                    }
 
         forces: Dict[str, Dict[str, Any]] = {}
         for elem in self.analyzer.model.elements:
-            raw_force = ops.eleForce(self.analyzer._ops_element_tag(elem.id))
+            raw_force = self._element_response_values(
+                ops,
+                self.analyzer._ops_element_tag(elem.id),
+                'localForce',
+                6,
+                elem.id,
+            )
             axial_start, shear_start, moment_start, axial_end, shear_end, moment_end = [
                 float(value) for value in raw_force[:6]
             ]
             area = float(self.analyzer.sections[elem.section].properties.get('A', 0.0))
             forces[elem.id] = {
+                'referenceFrame': 'element-local',
                 'n1': {'N': axial_start, 'V': shear_start, 'M': moment_start},
                 'n2': {'N': axial_end, 'V': shear_end, 'M': moment_end},
                 'axial': axial_start,
@@ -125,6 +160,8 @@ class OpenSeesStaticExecutor:
                 self._define_beam_element(elem, ops)
             elif elem.type == 'truss':
                 self._define_truss_element(elem, ops)
+            else:
+                raise ValueError(f"OpenSees static analysis does not support element type '{elem.type}'")
 
         self._apply_standardized_loads_3d(loads, ops)
         analysis_status = self._run_static_analysis(ops)
@@ -162,38 +199,54 @@ class OpenSeesStaticExecutor:
 
         forces = {}
         for elem in self.analyzer.model.elements:
-            try:
-                force = ops.eleForce(self.analyzer._ops_element_tag(elem.id))
-                if elem.type in {'beam', 'column'}:
-                    area = float(self.analyzer.sections[elem.section].properties.get('A', 0.0))
-                    forces[elem.id] = {
-                        'n1': {
-                            'N': float(force[0]),
-                            'V': float(np.sqrt(force[1] ** 2 + force[2] ** 2)),
-                            'M': float(np.sqrt(force[4] ** 2 + force[5] ** 2)),
-                            'V2': float(force[1]),
-                            'V3': float(force[2]),
-                            'T': float(force[3]),
-                            'M2': float(force[4]),
-                            'M3': float(force[5]),
-                        },
-                        'n2': {
-                            'N': float(force[6]),
-                            'V': float(np.sqrt(force[7] ** 2 + force[8] ** 2)),
-                            'M': float(np.sqrt(force[10] ** 2 + force[11] ** 2)),
-                            'V2': float(force[7]),
-                            'V3': float(force[8]),
-                            'T': float(force[9]),
-                            'M2': float(force[10]),
-                            'M3': float(force[11]),
-                        },
-                        'axial': float(force[0]),
-                        'stress': float(force[0] / area) if area > 0.0 else 0.0,
-                    }
-                else:
-                    forces[elem.id] = list(force)
-            except Exception:
-                pass
+            element_tag = self.analyzer._ops_element_tag(elem.id)
+            local_axes = self.analyzer._element_local_axes(elem)
+            if elem.type in {'beam', 'column'}:
+                force = self._element_response_values(ops, element_tag, 'localForce', 12, elem.id)
+                area = self._positive_section_property(self.analyzer.sections[elem.section], 'A', elem.id)
+                forces[elem.id] = {
+                    'referenceFrame': 'element-local',
+                    'localAxes': {
+                        'x': local_axes[0].tolist(),
+                        'y': local_axes[1].tolist(),
+                        'z': local_axes[2].tolist(),
+                    },
+                    'n1': {
+                        'N': float(force[0]),
+                        'V': float(np.sqrt(force[1] ** 2 + force[2] ** 2)),
+                        'M': float(np.sqrt(force[4] ** 2 + force[5] ** 2)),
+                        'V2': float(force[1]),
+                        'V3': float(force[2]),
+                        'T': float(force[3]),
+                        'M2': float(force[4]),
+                        'M3': float(force[5]),
+                    },
+                    'n2': {
+                        'N': float(force[6]),
+                        'V': float(np.sqrt(force[7] ** 2 + force[8] ** 2)),
+                        'M': float(np.sqrt(force[10] ** 2 + force[11] ** 2)),
+                        'V2': float(force[7]),
+                        'V3': float(force[8]),
+                        'T': float(force[9]),
+                        'M2': float(force[10]),
+                        'M3': float(force[11]),
+                    },
+                    'axial': float(force[0]),
+                    'stress': float(force[0] / area),
+                }
+            else:
+                axial = self._element_response_values(ops, element_tag, 'axialForce', 1, elem.id)[0]
+                area = self._positive_section_property(self.analyzer.sections[elem.section], 'A', elem.id)
+                forces[elem.id] = {
+                    'referenceFrame': 'element-local',
+                    'localAxes': {
+                        'x': local_axes[0].tolist(),
+                        'y': local_axes[1].tolist(),
+                        'z': local_axes[2].tolist(),
+                    },
+                    'axial': axial,
+                    'stress': axial / area,
+                }
 
         ops.wipe()
         return self.analyzer._attach_floor_load_transfer({
@@ -221,6 +274,12 @@ class OpenSeesStaticExecutor:
         if not section:
             raise ValueError(f"Section '{elem.section}' was not found for frame element '{elem.id}'")
 
+        area = self._positive_section_property(section, 'A', elem.id)
+        torsion = self._positive_section_property(section, 'J', elem.id)
+        inertia_y = self._positive_section_property(section, 'Iy', elem.id)
+        inertia_z = self._positive_section_property(section, 'Iz', elem.id)
+        elastic_modulus, shear_modulus = self._material_moduli(material, elem.id)
+
         transform_tag = self.analyzer._ops_element_tag(elem.id)
         reference_vector = self.analyzer._get_beam_reference_vector(elem)
         ops.geomTransf('Linear', transform_tag, *reference_vector)
@@ -229,12 +288,12 @@ class OpenSeesStaticExecutor:
             self.analyzer._ops_element_tag(elem.id),
             self.analyzer._ops_node_tag(elem.nodes[0]),
             self.analyzer._ops_node_tag(elem.nodes[1]),
-            section.properties.get('A', 0.01),
-            (material.E * 1000) if material else section.properties.get('E', 200000000),
-            section.properties.get('G', 79000000),
-            section.properties.get('J', 0.0001),
-            section.properties.get('Iy', 0.0001),
-            section.properties.get('Iz', 0.0001),
+            area,
+            elastic_modulus,
+            shear_modulus,
+            torsion,
+            inertia_y,
+            inertia_z,
             transform_tag,
         )
 
@@ -245,30 +304,34 @@ class OpenSeesStaticExecutor:
             raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
 
         transform_tag = self.analyzer._ops_element_tag(elem.id)
-        inertia = float(section.properties.get('Iy', section.properties.get('Iz', 0.0001)))
+        area = self._positive_section_property(section, 'A', elem.id)
+        inertia = self._positive_section_property(section, 'Iy', elem.id)
+        elastic_modulus, _ = self._material_moduli(material, elem.id)
         ops.geomTransf('Linear', transform_tag)
         ops.element(
             'elasticBeamColumn',
             self.analyzer._ops_element_tag(elem.id),
             self.analyzer._ops_node_tag(elem.nodes[0]),
             self.analyzer._ops_node_tag(elem.nodes[1]),
-            float(section.properties.get('A', 0.01)),
-            float((material.E * 1000) if material else section.properties.get('E', 200000000)),
+            area,
+            elastic_modulus,
             inertia,
             transform_tag,
         )
 
     def _define_truss_element(self, elem, ops) -> None:
         section = self.analyzer.sections.get(elem.section)
-        if section:
-            ops.element(
-                'truss',
-                self.analyzer._ops_element_tag(elem.id),
-                self.analyzer._ops_node_tag(elem.nodes[0]),
-                self.analyzer._ops_node_tag(elem.nodes[1]),
-                section.properties.get('A', 0.01),
-                self.analyzer._ops_material_tag(elem.material),
-            )
+        if section is None:
+            raise ValueError(f"Section '{elem.section}' was not found for truss element '{elem.id}'")
+        area = self._positive_section_property(section, 'A', elem.id)
+        ops.element(
+            'truss',
+            self.analyzer._ops_element_tag(elem.id),
+            self.analyzer._ops_node_tag(elem.nodes[0]),
+            self.analyzer._ops_node_tag(elem.nodes[1]),
+            area,
+            self.analyzer._ops_material_tag(elem.material),
+        )
 
     def _apply_standardized_loads_2d(self, loads: List[Dict[str, Any]], ops, plane: str) -> None:
         if not loads:
@@ -287,12 +350,17 @@ class OpenSeesStaticExecutor:
                     moment,
                 )
             elif load.get('type') == 'distributed':
+                elem = self.analyzer.elements.get(str(load['element']))
+                if elem is None:
+                    raise ValueError(f"Unknown element '{load['element']}' in distributed load")
+                qx, qy = self.analyzer._distributed_load_planar_components(load, elem)
                 ops.eleLoad(
                     '-ele',
                     self.analyzer._ops_element_tag(load['element']),
                     '-type',
                     '-beamUniform',
-                    self.analyzer._plane_distributed_load(load, plane),
+                    qy,
+                    qx,
                 )
 
     def _apply_standardized_loads_3d(self, loads: List[Dict[str, Any]], ops) -> None:
@@ -317,11 +385,16 @@ class OpenSeesStaticExecutor:
                         float(load.get('mz', 0.0)),
                     )
             elif load.get('type') == 'distributed':
+                elem = self.analyzer.elements.get(str(load['element']))
+                if elem is None:
+                    raise ValueError(f"Unknown element '{load['element']}' in distributed load")
+                wx, wy, wz = self.analyzer._distributed_load_local_components(load, elem)
                 ops.eleLoad(
                     '-ele',
                     self.analyzer._ops_element_tag(load['element']),
                     '-type',
                     '-beamUniform',
-                    float(load.get('wy', 0.0)),
-                    float(load.get('wz', 0.0)),
+                    wy,
+                    wz,
+                    wx,
                 )

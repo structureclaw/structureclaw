@@ -1143,23 +1143,23 @@ def _force_from_sections(sections: object) -> dict[str, float]:
 
 def _reaction_from_raw(raw: dict) -> dict[str, float]:
     reaction = {
-        "Fx": _safe_float(raw.get("Fx", raw.get("fx", raw.get("RX", raw.get("rx"))))),
-        "Fy": _safe_float(raw.get("Fy", raw.get("fy", raw.get("RY", raw.get("ry"))))),
-        "Fz": _safe_float(raw.get("Fz", raw.get("fz", raw.get("RZ", raw.get("rz"))))),
-        "Mx": _safe_float(raw.get("Mx", raw.get("mx"))),
-        "My": _safe_float(raw.get("My", raw.get("my"))),
-        "Mz": _safe_float(raw.get("Mz", raw.get("mz"))),
+        "fx": _safe_float(raw.get("Fx", raw.get("fx", raw.get("RX", raw.get("rx"))))),
+        "fy": _safe_float(raw.get("Fy", raw.get("fy", raw.get("RY", raw.get("ry"))))),
+        "fz": _safe_float(raw.get("Fz", raw.get("fz", raw.get("RZ", raw.get("rz"))))),
+        "mx": _safe_float(raw.get("Mx", raw.get("mx"))),
+        "my": _safe_float(raw.get("My", raw.get("my"))),
+        "mz": _safe_float(raw.get("Mz", raw.get("mz"))),
     }
     reaction["R"] = _safe_float(
         raw.get("R"),
-        (reaction["Fx"] ** 2 + reaction["Fy"] ** 2 + reaction["Fz"] ** 2) ** 0.5,
+        (reaction["fx"] ** 2 + reaction["fy"] ** 2 + reaction["fz"] ** 2) ** 0.5,
     )
     return reaction
 
 
 def _merge_max_reaction(target: dict[str, float], candidate: dict[str, float]) -> dict[str, float]:
     merged = dict(target)
-    for key in ("Fx", "Fy", "Fz", "Mx", "My", "Mz", "R"):
+    for key in ("fx", "fy", "fz", "mx", "my", "mz", "R"):
         merged[key] = max(abs(_safe_float(merged.get(key))), abs(_safe_float(candidate.get(key))))
     return merged
 
@@ -1184,7 +1184,7 @@ def _accumulate_node_envelope(
     ) ** 0.5
     item = table.setdefault(str(node_id), {"maxAbsDisplacement": 0.0, "controlCase": ""})
     if mag > _safe_float(item.get("maxAbsDisplacement")):
-        item["maxAbsDisplacement"] = round(mag, 4)
+        item["maxAbsDisplacement"] = round(mag, 8)
         item["controlCase"] = case_name
 
 
@@ -1230,12 +1230,12 @@ def _accumulate_reaction_envelope(
         {
             "maxAbsReaction": 0.0,
             "controlCase": "",
-            "Fx": 0.0,
-            "Fy": 0.0,
-            "Fz": 0.0,
-            "Mx": 0.0,
-            "My": 0.0,
-            "Mz": 0.0,
+            "fx": 0.0,
+            "fy": 0.0,
+            "fz": 0.0,
+            "mx": 0.0,
+            "my": 0.0,
+            "mz": 0.0,
             "R": 0.0,
         },
     )
@@ -1568,13 +1568,13 @@ def _build_analysis_result(
                 raw_node_id = str(raw_disp.get("id"))
                 node_id = result_node_lookup.get(raw_node_id, raw_node_id)
                 disp = _round_map({
-                    "ux": _safe_float(raw_disp.get("ux")),
-                    "uy": _safe_float(raw_disp.get("uy")),
-                    "uz": _safe_float(raw_disp.get("uz")),
+                    "ux": _safe_float(raw_disp.get("ux")) / 1000.0,
+                    "uy": _safe_float(raw_disp.get("uy")) / 1000.0,
+                    "uz": _safe_float(raw_disp.get("uz")) / 1000.0,
                     "rx": _safe_float(raw_disp.get("rx")),
                     "ry": _safe_float(raw_disp.get("ry")),
                     "rz": _safe_float(raw_disp.get("rz")),
-                })
+                }, digits=8)
                 case_disps[node_id] = disp
                 _accumulate_node_envelope(node_displacement_envelope, node_id, case_name, disp)
 
@@ -1650,7 +1650,10 @@ def _build_analysis_result(
             "id": descriptor.get("id"),
             "oldId": descriptor.get("oldId"),
             "displacements": case_disps,
-            "forces": case_forces,
+            "forces": {
+                element_id: {**force, "referenceFrame": "element-local"}
+                for element_id, force in case_forces.items()
+            },
             "reactions": case_reactions,
             "envelope": {},
         }
@@ -1688,7 +1691,7 @@ def _build_analysis_result(
             control_reaction = node_id
 
     envelope = {
-        "maxAbsDisplacement": round(max_disp, 4),
+        "maxAbsDisplacement": round(max_disp, 8),
         "controlNodeDisplacement": max_disp_node,
         "maxAbsAxialForce": round(max_axial, 2),
         "maxAbsShearForce": round(max_shear, 2),
@@ -1700,7 +1703,7 @@ def _build_analysis_result(
         "controlNodeReaction": control_reaction or None,
     }
     if max_disp_node:
-        envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = round(max_disp, 4)
+        envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = round(max_disp, 8)
 
     warnings: list[str] = []
     if not mapping:
@@ -1740,8 +1743,11 @@ def _build_analysis_result(
     return {
         "status": "success",
         "analysisMode": "yjk-static",
-        "displacements": {key: _round_map(value) for key, value in displacements.items()},
-        "forces": {key: _round_map(value, digits=3) for key, value in forces.items()},
+        "displacements": {key: _round_map(value, digits=8) for key, value in displacements.items()},
+        "forces": {
+            key: {**_round_map(value, digits=3), "referenceFrame": "element-local"}
+            for key, value in forces.items()
+        },
         "reactions": {key: _round_map(value, digits=3) for key, value in reactions.items()},
         "envelope": envelope,
         "summary": {
@@ -1757,7 +1763,7 @@ def _build_analysis_result(
             "designElementCount": design_results["summary"]["elementCount"],
             "maxDesignUtilization": design_results["summary"]["maxUtilization"],
             "controllingDesignElement": design_results["summary"]["controllingElement"],
-            "maxDisplacement": round(max_disp, 4),
+            "maxDisplacement": round(max_disp, 8),
             "maxDisplacementNode": max_disp_node,
             "floors_analyzed": meta.get("n_floors"),
             "n_floors": meta.get("n_floors"),

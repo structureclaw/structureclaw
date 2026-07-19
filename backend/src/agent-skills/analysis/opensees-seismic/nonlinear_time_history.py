@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from coordinate_semantics import resolve_model_dimension
 from design_basis import model_payload
 from gb50011_drift_limits import gb50011_advisory_yield_drift_metadata
 from modal import (
@@ -13,7 +14,6 @@ from modal import (
     _is_opensees_line_element_type,
     _material_e,
     _material_map,
-    _model_dimension,
     _node_key,
     _records,
     _restraints_for_node,
@@ -525,7 +525,7 @@ def _run_member_hinge_2d_time_history(
     payload = model_payload(model)
     nodes = _records(payload, model, "nodes")
     elements = _records(payload, model, "elements")
-    if _model_dimension(nodes) != "2d":
+    if resolve_model_dimension(model) != "2d":
         return None
 
     section = _workflow_section(workflow)
@@ -581,7 +581,7 @@ def _run_member_hinge_2d_time_history(
                 continue
             material = materials.get(str(_field(element, "material", "")))
             area, iy, iz, _torsion = _effective_section_properties(element_type, section_record)
-            inertia = max(iy, iz, 1.0e-8)
+            inertia = max(iy, 1.0e-8)
             e_modulus = _material_e(material, section_record)
             element_id = str(_field(element, "id"))
             member_node_tags: List[int] = []

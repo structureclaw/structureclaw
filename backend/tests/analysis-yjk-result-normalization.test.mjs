@@ -98,12 +98,14 @@ result = driver._build_analysis_result(
     steps=[],
 )
 
-assert result["displacements"]["N1"]["ux"] == 1.25
-assert result["reactions"]["N1"]["Fx"] == 10
+assert result["displacements"]["N1"]["ux"] == 0.00125
+assert result["reactions"]["N1"]["fx"] == 10
 assert result["forces"]["B1"]["N"] == 5
 assert result["caseResults"]["lc_101"]["name"] == "DL"
 assert result["caseResults"]["lc_101"]["reactions"]["N1"]["R"] > 0
 assert result["envelopeTables"]["nodeReaction"]["N1"]["maxAbsReaction"] > 0
+assert result["envelopeTables"]["nodeReaction"]["N1"]["fx"] == 10
+assert "Fx" not in result["envelopeTables"]["nodeReaction"]["N1"]
 print("ok")
 `;
 

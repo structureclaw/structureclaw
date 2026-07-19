@@ -21,7 +21,7 @@ def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[st
     if analysis_type == "modal":
         num_modes = parameters.get("numModes", 10)
         try:
-            return executor.modal_analysis(num_modes, ops)
+            return executor.modal_analysis(num_modes, ops, parameters.get("direction", "x"))
         except Exception as error:
             raise RuntimeError(f"Modal analysis failed: {error}") from error
 
@@ -33,6 +33,7 @@ def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[st
                 parameters.get("dampingRatio", 0.05),
                 parameters.get("groundMotion", []),
                 ops,
+                parameters.get("direction", "x"),
             )
         except Exception as error:
             raise RuntimeError(f"Time history analysis failed: {error}") from error

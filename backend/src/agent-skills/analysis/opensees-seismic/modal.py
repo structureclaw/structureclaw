@@ -4,8 +4,14 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-
+from coordinate_semantics import (
+    build_element_local_axes,
+    coordinate_contract_metadata,
+    get_model_metadata,
+    get_reference_vector,
+    resolve_model_dimension,
+    validate_coordinate_contract,
+)
 from design_basis import SeismicDesignBasis, model_payload
 from seismic_contracts import optional_number
 
@@ -34,6 +40,7 @@ class ModalAnalysis:
     direction: str
     engine_mode: str
     warnings: List[str] = field(default_factory=list)
+    coordinate_contract: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -44,6 +51,7 @@ class ModalAnalysis:
             "direction": self.direction,
             "engineMode": self.engine_mode,
             "warnings": self.warnings,
+            "coordinateContract": self.coordinate_contract,
         }
 
 
@@ -81,11 +89,6 @@ def _element_nodes(element: Any) -> List[str]:
     return [str(item) for item in nodes] if isinstance(nodes, list) else []
 
 
-def _model_dimension(nodes: List[Any]) -> str:
-    y_values = [float(_field(node, "y", 0.0) or 0.0) for node in nodes]
-    return "2d" if not y_values or (max(y_values) - min(y_values)) <= 1e-9 else "3d"
-
-
 def _section_map(sections: List[Any]) -> Dict[str, Any]:
     return {str(_field(section, "id")): section for section in sections}
 
@@ -94,7 +97,7 @@ def _material_map(materials: List[Any]) -> Dict[str, Any]:
     return {str(_field(material, "id")): material for material in materials}
 
 
-def _section_property(section: Any, name: str, default: float) -> float:
+def _section_property(section: Any, name: str, default: float = 0.0) -> float:
     properties = _field(section, "properties", {}) or {}
     if isinstance(properties, dict):
         value = optional_number(properties.get(name))
@@ -147,10 +150,10 @@ def _wall_dimensions_m(section: Any) -> Tuple[Optional[float], Optional[float]]:
 
 
 def _effective_section_properties(element_type: str, section: Any) -> Tuple[float, float, float, float]:
-    area = _section_property(section, "A", 0.1)
-    iy = _section_property(section, "Iy", 0.01)
-    iz = _section_property(section, "Iz", iy)
-    j = _section_property(section, "J", 0.01)
+    area = _section_property(section, "A")
+    iy = _section_property(section, "Iy")
+    iz = _section_property(section, "Iz")
+    j = _section_property(section, "J")
     if not _is_wall_line_element_type(element_type):
         return area, iy, iz, j
 
@@ -172,19 +175,23 @@ def _effective_section_properties(element_type: str, section: Any) -> Tuple[floa
 
 def _material_e(material: Any, section: Any) -> float:
     value = optional_number(_field(material, "E"))
-    if value is None:
-        value = optional_number(_section_property(section, "E", 30000000.0))
-    if value is None:
-        return 30000000.0
+    if value is None or not math.isfinite(float(value)) or float(value) <= 0.0:
+        raise ValueError("Seismic OpenSees analysis requires a finite material E > 0")
     # StructureClaw material records store MPa for concrete/steel. Convert MPa to kN/m2.
-    return float(value) * 1000.0 if value < 1_000_000.0 else float(value)
+    return float(value) * 1000.0
 
 
 def _material_g(material: Any, section: Any) -> float:
-    value = optional_number(_field(material, "G"))
-    if value is None:
-        value = optional_number(_section_property(section, "G", 12000000.0))
-    return float(value) * 1000.0 if value is not None and value < 1_000_000.0 else float(value or 12000000.0)
+    elastic_modulus = _material_e(material, section)
+    poisson_ratio = optional_number(_field(material, "nu"))
+    if (
+        poisson_ratio is None
+        or not math.isfinite(float(poisson_ratio))
+        or float(poisson_ratio) < 0.0
+        or float(poisson_ratio) > 0.5
+    ):
+        raise ValueError("Seismic OpenSees analysis requires finite material 0 <= nu <= 0.5")
+    return elastic_modulus / (2.0 * (1.0 + float(poisson_ratio)))
 
 
 def _floor_levels(nodes: List[Any]) -> List[float]:
@@ -279,20 +286,16 @@ def _restraints_for_node(node: Any, dimension: str) -> List[int]:
     return (values + [0, 0, 0, 0, 0, 0])[:6]
 
 
-def _reference_vector(start: Any, end: Any) -> List[float]:
-    axis = np.array([
-        float(_field(end, "x", 0.0) or 0.0) - float(_field(start, "x", 0.0) or 0.0),
-        float(_field(end, "y", 0.0) or 0.0) - float(_field(start, "y", 0.0) or 0.0),
-        float(_field(end, "z", 0.0) or 0.0) - float(_field(start, "z", 0.0) or 0.0),
-    ])
-    norm = float(np.linalg.norm(axis))
-    if norm <= 0.0:
-        return [0.0, 0.0, 1.0]
-    axis /= norm
-    ref = np.array([0.0, 0.0, 1.0])
-    if abs(float(np.dot(axis, ref))) > 0.95:
-        ref = np.array([0.0, 1.0, 0.0])
-    return ref.tolist()
+def _reference_vector(model: Any, element: Any, start: Any, end: Any) -> List[float]:
+    element_id = str(_field(element, "id"))
+    reference = get_reference_vector(get_model_metadata(model), element_id)
+    axes = build_element_local_axes(
+        [float(_field(start, "x", 0.0) or 0.0), float(_field(start, "y", 0.0) or 0.0), float(_field(start, "z", 0.0) or 0.0)],
+        [float(_field(end, "x", 0.0) or 0.0), float(_field(end, "y", 0.0) or 0.0), float(_field(end, "z", 0.0) or 0.0)],
+        reference,
+        optional_number(_field(element, "rotation_angle")),
+    )
+    return axes[2].tolist()
 
 
 def _build_opensees_model(ops: Any, payload: Dict[str, Any], model: Any, basis: SeismicDesignBasis, direction: str) -> Tuple[str, Dict[str, int], List[Dict[str, float]]]:
@@ -301,7 +304,8 @@ def _build_opensees_model(ops: Any, payload: Dict[str, Any], model: Any, basis: 
     sections = _section_map(_records(payload, model, "sections"))
     materials = _material_map(_records(payload, model, "materials"))
     node_lookup = {_node_key(node): node for node in nodes}
-    dimension = _model_dimension(nodes)
+    validate_coordinate_contract(model)
+    dimension = resolve_model_dimension(model)
     floor_masses, _ = compute_floor_masses(payload, model, dimension)
     node_tags = {_node_key(node): index + 1 for index, node in enumerate(nodes)}
 
@@ -333,27 +337,30 @@ def _build_opensees_model(ops: Any, payload: Dict[str, Any], model: Any, basis: 
     for index, element in enumerate(elements, start=1):
         element_type = _element_type(element)
         if not _is_opensees_line_element_type(element_type):
-            continue
+            raise ValueError(f"Seismic OpenSees analysis does not support element type '{element_type}'")
         element_nodes = _element_nodes(element)
-        if len(element_nodes) < 2 or element_nodes[0] not in node_lookup or element_nodes[1] not in node_lookup:
-            continue
-        if _is_wall_line_element_type(element_type) and len(element_nodes) != 2:
-            continue
+        if len(element_nodes) != 2 or element_nodes[0] not in node_lookup or element_nodes[1] not in node_lookup:
+            raise ValueError(f"Seismic line element '{_field(element, 'id')}' must reference exactly two known nodes")
         section = sections.get(str(_field(element, "section", "")))
         if section is None:
-            continue
+            raise ValueError(f"Element '{_field(element, 'id')}' references an unavailable section")
         material = materials.get(str(_field(element, "material", "")))
+        if material is None:
+            raise ValueError(f"Element '{_field(element, 'id')}' references an unavailable material")
         area, iy, iz, torsion = _effective_section_properties(element_type, section)
-        inertia = max(iy, iz, 1e-8)
         e_modulus = _material_e(material, section)
         tag = index
         if dimension == "2d":
+            if not all(math.isfinite(value) and value > 0.0 for value in (area, iy)):
+                raise ValueError(f"Element '{_field(element, 'id')}' requires section A/Iy > 0")
             ops.geomTransf("Linear", tag)
-            ops.element("elasticBeamColumn", tag, node_tags[element_nodes[0]], node_tags[element_nodes[1]], area, e_modulus, inertia, tag)
+            ops.element("elasticBeamColumn", tag, node_tags[element_nodes[0]], node_tags[element_nodes[1]], area, e_modulus, iy, tag)
         else:
+            if not all(math.isfinite(value) and value > 0.0 for value in (area, iy, iz, torsion)):
+                raise ValueError(f"Element '{_field(element, 'id')}' requires section A/Iy/Iz/J > 0")
             start = node_lookup[element_nodes[0]]
             end = node_lookup[element_nodes[1]]
-            ops.geomTransf("Linear", tag, *_reference_vector(start, end))
+            ops.geomTransf("Linear", tag, *_reference_vector(model, element, start, end))
             ops.element(
                 "elasticBeamColumn",
                 tag,
@@ -373,7 +380,7 @@ def _build_opensees_model(ops: Any, payload: Dict[str, Any], model: Any, basis: 
 
 def _fallback_modes(payload: Dict[str, Any], model: Any, basis: SeismicDesignBasis, direction: str, modal_count: int) -> ModalAnalysis:
     nodes = _records(payload, model, "nodes")
-    dimension = _model_dimension(nodes)
+    dimension = resolve_model_dimension(model)
     floor_masses, warnings = compute_floor_masses(payload, model, dimension)
     total_mass = sum(floor["mass"] for floor in floor_masses)
     height = max(basis.height_m, 3.0)
@@ -416,6 +423,7 @@ def _fallback_modes(payload: Dict[str, Any], model: Any, basis: SeismicDesignBas
         direction=direction,
         engine_mode="equivalent_shear_building_fallback",
         warnings=warnings,
+        coordinate_contract=coordinate_contract_metadata(model),
     )
 
 
@@ -424,6 +432,16 @@ def run_modal_analysis(model: Any, basis: SeismicDesignBasis, modal_count: int, 
     nodes = _records(payload, model, "nodes")
     if not nodes:
         raise RuntimeError("Cannot run seismic analysis without model nodes.")
+    validate_coordinate_contract(model)
+    dimension_contract = resolve_model_dimension(model)
+    normalized_direction = str(direction or "x").strip().lower()
+    allowed_directions = {"x"} if dimension_contract == "2d" else {"x", "y"}
+    if normalized_direction not in allowed_directions:
+        raise RuntimeError(
+            f"Direction '{direction}' is inactive for a {dimension_contract} seismic model; "
+            f"expected {', '.join(sorted(allowed_directions))}"
+        )
+    direction = normalized_direction
 
     try:
         import openseespy.opensees as ops
@@ -448,6 +466,8 @@ def run_modal_analysis(model: Any, basis: SeismicDesignBasis, modal_count: int, 
             eigen_values = ops.eigen(requested_modes)
         except Exception:
             eigen_values = ops.eigen("-fullGenLapack", requested_modes)
+        if isinstance(eigen_values, (int, float)):
+            eigen_values = [eigen_values]
         if not eigen_values:
             raise RuntimeError("OpenSees returned no eigenvalues.")
 
@@ -476,13 +496,12 @@ def run_modal_analysis(model: Any, basis: SeismicDesignBasis, modal_count: int, 
                 ]
                 phis: List[float] = []
                 for node in level_nodes:
-                    try:
-                        vector = ops.nodeEigenvector(node_tags[_node_key(node)], mode_index)
-                    except Exception:
-                        vector = []
-                    phi = float(vector[direction_index]) if len(vector) > direction_index else 0.0
+                    vector = ops.nodeEigenvector(node_tags[_node_key(node)], mode_index)
+                    if len(vector) <= direction_index:
+                        raise RuntimeError("OpenSees returned an incomplete modal vector")
+                    phi = float(vector[direction_index])
                     if not math.isfinite(phi):
-                        phi = 0.0
+                        raise RuntimeError("OpenSees returned a non-finite modal vector")
                     phis.append(phi)
                 phi_avg = sum(phis) / len(phis) if phis else 0.0
                 mass = float(floor["mass"])
@@ -521,6 +540,7 @@ def run_modal_analysis(model: Any, basis: SeismicDesignBasis, modal_count: int, 
             direction=direction,
             engine_mode="opensees_eigen",
             warnings=[],
+            coordinate_contract=coordinate_contract_metadata(model),
         )
     except Exception:
         try:

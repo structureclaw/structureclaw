@@ -6,6 +6,7 @@
 import numpy as np
 from typing import Dict, Any, List, Optional, Set, Tuple
 import logging
+import math
 import re
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,10 @@ class StaticAnalyzer:
         # Lazily cached coordinate semantics metadata.
         self._coordinate_metadata: Optional[Dict[str, Any]] = None
         self._floor_load_transfer_trace: Dict[str, Any] = {}
+
+        from coordinate_semantics import validate_coordinate_contract
+
+        validate_coordinate_contract(model)
 
     def _get_coordinate_metadata(self) -> Dict[str, Any]:
         """Return cached model metadata dict for coordinate semantics lookups."""
@@ -72,76 +77,35 @@ class StaticAnalyzer:
         return max(values) - min(values)
 
     def _get_2d_plane_coordinates(self, node, plane: str) -> tuple[float, float]:
-        if plane == 'xy':
-            return float(node.x), float(node.y)
+        if plane != 'xz':
+            raise ValueError("Canonical 2-D analysis supports only the global X-Z plane")
         return float(node.x), float(node.z)
 
     def _run_simplified(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        简化分析（当 OpenSees 不可用时）
-        """
+        """Run the deterministic solver for the one declared dimension."""
+        from coordinate_semantics import resolve_model_dimension
+
         batch_cases = parameters.get('batchCases', [])
-        planar_frame_mode = self._select_planar_frame_mode(parameters)
+        dimension = resolve_model_dimension(self.model)
 
-        if self._can_run_2d_frame_solver() and planar_frame_mode is not None:
-            try:
-                if batch_cases:
-                    return self._run_batch_cases(
-                        parameters,
-                        lambda case_parameters: self._run_linear_2d_frame(case_parameters, planar_frame_mode),
-                    )
-                return self._run_linear_2d_frame(parameters, planar_frame_mode)
-            except Exception as e:
-                logger.warning(f"2D frame solver failed, trying truss/zero fallback: {e}")
+        if self._can_run_2d_frame_solver():
+            solver = (
+                (lambda case_parameters: self._run_linear_2d_frame(case_parameters, 'xz'))
+                if dimension == '2d'
+                else self._run_linear_3d_frame
+            )
+        elif self._can_run_2d_truss_solver():
+            solver = self._run_linear_2d_truss if dimension == '2d' else self._run_linear_3d_truss
+        else:
+            element_types = sorted({str(element.type) for element in self.model.elements})
+            raise ValueError(
+                "Deterministic static analysis supports homogeneous frame or truss models; "
+                f"received element types {element_types}"
+            )
 
-        if self._can_run_3d_frame_solver() and self._requires_3d_frame_solver(parameters):
-            try:
-                if batch_cases:
-                    return self._run_batch_cases(parameters, self._run_linear_3d_frame)
-                return self._run_linear_3d_frame(parameters)
-            except Exception as e:
-                logger.warning(f"3D frame solver failed, trying 3D truss/2D/zero fallback: {e}")
-
-        if self._can_run_3d_truss_solver() and self._requires_3d_truss_solver():
-            try:
-                if batch_cases:
-                    return self._run_batch_cases(parameters, self._run_linear_3d_truss)
-                return self._run_linear_3d_truss(parameters)
-            except Exception as e:
-                logger.warning(f"3D truss solver failed, trying 2D/zero fallback: {e}")
-
-        if self._can_run_2d_truss_solver():
-            try:
-                if batch_cases:
-                    return self._run_batch_cases(parameters, self._run_linear_2d_truss)
-                return self._run_linear_2d_truss(parameters)
-            except Exception as e:
-                logger.warning(f"2D truss solver failed, fallback to zero-result mode: {e}")
-
-        # 兜底的零结果模式
-        displacements = {}
-        forces = {}
-
-        # 假设简化计算
-        for node in self.model.nodes:
-            # 简化的位移估算
-            displacements[node.id] = {
-                'ux': 0.0,
-                'uy': 0.0,
-                'uz': 0.0,
-                'rx': 0.0,
-                'ry': 0.0,
-                'rz': 0.0
-            }
-
-        return {
-            'status': 'success',
-            'displacements': displacements,
-            'forces': forces,
-            'reactions': {},
-            'envelope': self._build_envelope(displacements, forces, {}),
-            'note': 'Simplified analysis - OpenSeesPy not available'
-        }
+        if batch_cases:
+            return self._run_batch_cases(parameters, solver)
+        return solver(parameters)
 
     def _run_batch_cases(self, parameters: Dict[str, Any], solver_func) -> Dict[str, Any]:
         """
@@ -201,7 +165,7 @@ class StaticAnalyzer:
                     summary_envelope[metric] = value
                     summary_envelope['controlCase'][control_name] = case_id
 
-        return {
+        return self._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': case_results[next(iter(case_results))].get('analysisMode', 'batch'),
             'batchCaseCount': len(case_results),
@@ -216,7 +180,7 @@ class StaticAnalyzer:
                 'caseCount': len(case_results),
                 'maxAbsDisplacement': summary_envelope['maxAbsDisplacement'],
             },
-        }
+        })
 
     def _accumulate_case_envelope_tables(
         self,
@@ -321,76 +285,12 @@ class StaticAnalyzer:
         return self._select_planar_frame_mode(parameters) is None
 
     def _select_planar_frame_mode(self, parameters: Dict[str, Any]) -> Optional[str]:
-        """
-        判断 beam 模型能否映射为 2D 平面 frame。
-        返回:
-          - 'xy': x-y 平面，弯曲绕 z 轴
-          - 'xz': x-z 平面，弯曲绕 y 轴
-          - None: 必须走 3D
-        """
+        """Select the declared solver dimension without guessing a plane."""
         if not self.model.elements or not all(elem.type in {'beam', 'column'} for elem in self.model.elements):
             return None
+        from coordinate_semantics import resolve_model_dimension
 
-        try:
-            from coordinate_semantics import get_frame_dimension
-
-            if get_frame_dimension(self._get_coordinate_metadata()) == '3d':
-                return None
-        except Exception:
-            logger.debug('Could not read frame dimension metadata; falling back to geometry-based plane inference', exc_info=True)
-
-        y_range = self._axis_range('y')
-        z_range = self._axis_range('z')
-        tolerance = 1e-12
-
-        if y_range > tolerance and z_range > tolerance:
-            return None
-        if y_range > tolerance:
-            return 'xy'
-        if z_range > tolerance:
-            return 'xz'
-
-        # Model is 1D (all nodes on x-axis).
-        # For 1D beam models, always default to xz plane for compatibility with
-        # restraint format and load mapping. Load handling maps fy to fz for xz plane.
-        # However, certain load patterns cannot be represented correctly by 2D solver:
-        # - torsional moment mx (2D solver ignores torsion)
-        # - simultaneous nonzero xy-plane (fy/mz/wy) and xz-plane (fz/my/wz) components
-        # In those cases we must fall back to 3D solver (return None).
-        has_xy_load = False
-        has_xz_load = False
-        for load in self._collect_nodal_loads(parameters):
-            if str(load.get('type', '')) == 'distributed':
-                wy = self._to_float(load.get('wy', 0.0), 0.0)
-                wz = self._to_float(load.get('wz', 0.0), 0.0)
-                if abs(wy) > tolerance:
-                    has_xy_load = True
-                if abs(wz) > tolerance:
-                    has_xz_load = True
-                continue
-
-            fy = self._to_float(load.get('fy', 0.0), 0.0)
-            fz = self._to_float(load.get('fz', 0.0), 0.0)
-            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
-            my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
-            mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
-
-            # Any torsional load about x-axis requires 3D; 2D solver ignores mx.
-            if abs(mx) > tolerance:
-                return None
-
-            if abs(fy) > tolerance or abs(mz) > tolerance:
-                has_xy_load = True
-            if abs(fz) > tolerance or abs(my) > tolerance:
-                has_xz_load = True
-
-        # Mixed-plane loads cannot be accurately represented in 2D (would drop components)
-        if has_xy_load and has_xz_load:
-            return None
-
-        # For 1D models, always use x-z plane; load handling maps fy to fz.
-        # This aligns with restraint interpretation and fixes the instability issue from #83.
-        return 'xz'
+        return 'xz' if resolve_model_dimension(self.model) == '2d' else None
 
     def _can_run_3d_truss_solver(self) -> bool:
         """判断是否可用内置 3D truss 求解器。"""
@@ -399,14 +299,10 @@ class StaticAnalyzer:
         return all(elem.type == 'truss' for elem in self.model.elements)
 
     def _requires_3d_truss_solver(self) -> bool:
-        """
-        判断当前 truss 模型是否需要 3D 求解路径。
-        规则：任一节点 y 坐标非零即触发 3D。
-        """
-        for node in self.model.nodes:
-            if abs(float(node.y)) > 1e-12:
-                return True
-        return False
+        """Use the one declared model dimension for truss routing."""
+        from coordinate_semantics import resolve_model_dimension
+
+        return resolve_model_dimension(self.model) == '3d'
 
     def _run_linear_3d_truss(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -436,7 +332,7 @@ class StaticAnalyzer:
             if A <= 0.0:
                 raise ValueError(f"Element '{elem.id}' requires section area A > 0")
 
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             l = dx / L
             m = dy / L
             n = dz / L
@@ -522,7 +418,7 @@ class StaticAnalyzer:
             dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
             L = float(np.sqrt(dx * dx + dy * dy + dz * dz))
             A = float(sec.properties.get('A', 0.0))
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             l = dx / L
             m = dy / L
             n = dz / L
@@ -548,7 +444,7 @@ class StaticAnalyzer:
                     'fz': float(R[i + 2]),
                 }
 
-        return {
+        return self._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'linear_3d_truss',
             'displacements': displacements,
@@ -556,7 +452,7 @@ class StaticAnalyzer:
             'reactions': reactions,
             'envelope': self._build_envelope(displacements, forces, reactions),
             'summary': self._generate_summary(displacements, forces),
-        }
+        })
 
     def _run_linear_2d_truss(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -586,7 +482,7 @@ class StaticAnalyzer:
             if A <= 0.0:
                 raise ValueError(f"Element '{elem.id}' requires section area A > 0")
 
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             c = dx / L
             s = dz / L
             k = (A * E) / L
@@ -614,8 +510,7 @@ class StaticAnalyzer:
                 continue
             i = node_index[node_id] * 2
             F[i] += float(load.get('fx', 0.0))
-            # 兼容 fy/fz，统一映射到 x-z 平面的竖向 z
-            F[i + 1] += self._plane_transverse_force(load, 'xz')
+            F[i + 1] += float(load.get('fz', 0.0))
 
         fixed_dofs = set()
         for node in node_order:
@@ -670,7 +565,7 @@ class StaticAnalyzer:
             dx, dz = x2 - x1, z2 - z1
             L = float(np.sqrt(dx * dx + dz * dz))
             A = float(sec.properties.get('A', 0.0))
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             c = dx / L
             s = dz / L
 
@@ -694,7 +589,7 @@ class StaticAnalyzer:
                     'fz': float(R[i + 1]),
                 }
 
-        return {
+        return self._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'linear_2d_truss',
             'displacements': displacements,
@@ -702,13 +597,11 @@ class StaticAnalyzer:
             'reactions': reactions,
             'envelope': self._build_envelope(displacements, forces, reactions),
             'summary': self._generate_summary(displacements, forces),
-        }
+        })
 
     def _run_linear_2d_frame(self, parameters: Dict[str, Any], plane: Optional[str] = None) -> Dict[str, Any]:
         """
-        2D frame/beam 线弹性静力分析。
-        `xz` 平面: DOF = ux, uz, ry
-        `xy` 平面: DOF = ux, uy, rz
+        2D frame/beam 线弹性静力分析（global X-Z; DOF = ux, uz, ry）。
         """
         plane = plane or self._select_planar_frame_mode(parameters) or 'xz'
         node_order = sorted(self.model.nodes, key=lambda n: n.id)
@@ -719,15 +612,13 @@ class StaticAnalyzer:
         F = np.zeros(dof_count, dtype=float)
 
         load_list = self._collect_nodal_loads(parameters)
-        element_distributed_loads: Dict[str, List[float]] = {}
+        element_distributed_loads: Dict[str, List[Dict[str, Any]]] = {}
         for load in load_list:
             if str(load.get('type', '')) == 'distributed':
                 elem_id = str(load.get('element', ''))
                 if not elem_id:
                     continue
-                # 约定 q>0 沿局部 +v 方向；常见竖向向下可传负值
-                q = self._plane_distributed_load(load, plane)
-                element_distributed_loads.setdefault(elem_id, []).append(q)
+                element_distributed_loads.setdefault(elem_id, []).append(load)
 
         element_meta: Dict[str, Dict[str, Any]] = {}
         for elem in self.model.elements:
@@ -748,11 +639,10 @@ class StaticAnalyzer:
                 raise ValueError(f"Element '{elem.id}' requires section area A > 0")
 
             E = self._effective_elastic_modulus(mat)
-            inertia_key = 'Iz' if plane == 'xy' else 'Iy'
-            fallback_inertia_key = 'Iy' if plane == 'xy' else 'Iz'
-            I = float(sec.properties.get(inertia_key, sec.properties.get(fallback_inertia_key, 0.0)))
+            inertia_key = 'Iy'
+            I = float(sec.properties.get(inertia_key, 0.0))
             if I <= 0.0:
-                raise ValueError(f"Element '{elem.id}' requires section inertia {inertia_key}/{fallback_inertia_key} > 0")
+                raise ValueError(f"Element '{elem.id}' requires section inertia {inertia_key} > 0")
 
             c = dx / L
             s = dt / L
@@ -789,11 +679,16 @@ class StaticAnalyzer:
                 for c_idx in range(6):
                     K[dofs[r], dofs[c_idx]] += k_global[r, c_idx]
 
-            q = sum(element_distributed_loads.get(elem.id, []))
+            local_loads = [
+                self._distributed_load_planar_components(load, elem)
+                for load in element_distributed_loads.get(elem.id, [])
+            ]
+            qx = sum(item[0] for item in local_loads)
+            q = sum(item[1] for item in local_loads)
             f_local_dist = np.zeros(6, dtype=float)
-            if abs(q) > 0.0:
+            if abs(qx) > 0.0 or abs(q) > 0.0:
                 f_local_dist = np.array(
-                    [0.0, q * L / 2.0, q * (L**2) / 12.0, 0.0, q * L / 2.0, -q * (L**2) / 12.0],
+                    [qx * L / 2.0, q * L / 2.0, q * (L**2) / 12.0, qx * L / 2.0, q * L / 2.0, -q * (L**2) / 12.0],
                     dtype=float,
                 )
                 F[dofs] += T.T @ f_local_dist
@@ -821,20 +716,12 @@ class StaticAnalyzer:
         for node in node_order:
             idx = node_index[node.id] * 3
             restraints = node.restraints or [False] * 6
-            if plane == 'xy':
-                if restraints[0]:
-                    fixed_dofs.add(idx)
-                if restraints[1]:
-                    fixed_dofs.add(idx + 1)
-                if restraints[5]:
-                    fixed_dofs.add(idx + 2)
-            else:
-                if restraints[0]:
-                    fixed_dofs.add(idx)
-                if restraints[2]:
-                    fixed_dofs.add(idx + 1)
-                if restraints[4]:
-                    fixed_dofs.add(idx + 2)
+            if restraints[0]:
+                fixed_dofs.add(idx)
+            if restraints[2]:
+                fixed_dofs.add(idx + 1)
+            if restraints[4]:
+                fixed_dofs.add(idx + 2)
 
         free_dofs = [i for i in range(dof_count) if i not in fixed_dofs]
         if not free_dofs:
@@ -857,24 +744,14 @@ class StaticAnalyzer:
         displacements = {}
         for node in node_order:
             i = node_index[node.id] * 3
-            if plane == 'xy':
-                displacements[node.id] = {
-                    'ux': float(U[i]),
-                    'uy': float(U[i + 1]),
-                    'uz': 0.0,
-                    'rx': 0.0,
-                    'ry': 0.0,
-                    'rz': float(U[i + 2]),
-                }
-            else:
-                displacements[node.id] = {
-                    'ux': float(U[i]),
-                    'uy': 0.0,
-                    'uz': float(U[i + 1]),
-                    'rx': 0.0,
-                    'ry': float(U[i + 2]),
-                    'rz': 0.0,
-                }
+            displacements[node.id] = {
+                'ux': float(U[i]),
+                'uy': 0.0,
+                'uz': float(U[i + 1]),
+                'rx': 0.0,
+                'ry': float(U[i + 2]),
+                'rz': 0.0,
+            }
 
         forces = {}
         for elem in self.model.elements:
@@ -885,6 +762,7 @@ class StaticAnalyzer:
             f_local = meta['k_local'] @ u_local - meta['f_local_dist']
             A = float(meta['A'])
             forces[elem.id] = {
+                'referenceFrame': 'element-local',
                 'n1': {'N': float(f_local[0]), 'V': float(f_local[1]), 'M': float(f_local[2])},
                 'n2': {'N': float(f_local[3]), 'V': float(f_local[4]), 'M': float(f_local[5])},
                 'axial': float(f_local[0]),
@@ -895,18 +773,11 @@ class StaticAnalyzer:
         for node in node_order:
             i = node_index[node.id] * 3
             if i in fixed_dofs or (i + 1) in fixed_dofs or (i + 2) in fixed_dofs:
-                if plane == 'xy':
-                    reactions[node.id] = {
-                        'fx': float(R[i]),
-                        'fy': float(R[i + 1]),
-                        'mz': float(R[i + 2]),
-                    }
-                else:
-                    reactions[node.id] = {
-                        'fx': float(R[i]),
-                        'fz': float(R[i + 1]),
-                        'my': float(R[i + 2]),
-                    }
+                reactions[node.id] = {
+                    'fx': float(R[i]),
+                    'fz': float(R[i + 1]),
+                    'my': float(R[i + 2]),
+                }
 
         return self._attach_floor_load_transfer({
             'status': 'success',
@@ -931,16 +802,14 @@ class StaticAnalyzer:
         F = np.zeros(dof_count, dtype=float)
 
         load_list = self._collect_nodal_loads(parameters)
-        element_distributed_loads: Dict[str, List[Tuple[float, float]]] = {}
+        element_distributed_loads: Dict[str, List[Dict[str, Any]]] = {}
         for load in load_list:
             if str(load.get('type', '')) != 'distributed':
                 continue
             elem_id = str(load.get('element', ''))
             if not elem_id:
                 continue
-            wy = self._to_float(load.get('wy', 0.0), 0.0)
-            wz = self._to_float(load.get('wz', 0.0), 0.0)
-            element_distributed_loads.setdefault(elem_id, []).append((wy, wz))
+            element_distributed_loads.setdefault(elem_id, []).append(load)
 
         element_meta: Dict[str, Dict[str, Any]] = {}
         for elem in self.model.elements:
@@ -957,17 +826,14 @@ class StaticAnalyzer:
                 raise ValueError(f"Element '{elem.id}' has zero length")
 
             A = float(sec.properties.get('A', 0.0))
-            Iy = float(sec.properties.get('Iy', sec.properties.get('Iz', 0.0)))
-            Iz = float(sec.properties.get('Iz', sec.properties.get('Iy', 0.0)))
+            Iy = float(sec.properties.get('Iy', 0.0))
+            Iz = float(sec.properties.get('Iz', 0.0))
             J = float(sec.properties.get('J', 0.0))
             E = self._effective_elastic_modulus(mat)
-            G = float(sec.properties.get('G', E / (2.0 * (1.0 + float(mat.nu)))))
+            G = E / (2.0 * (1.0 + float(mat.nu)))
 
-            if A <= 0.0 or Iy <= 0.0 or Iz <= 0.0:
-                raise ValueError(f"Element '{elem.id}' requires A/Iy/Iz > 0 for 3D frame solver")
-            if J <= 0.0:
-                # 为最小可用路径提供扭转惯量兜底，避免常见输入缺失导致求解失败。
-                J = max(Iy + Iz, 1e-9)
+            if A <= 0.0 or Iy <= 0.0 or Iz <= 0.0 or J <= 0.0:
+                raise ValueError(f"Element '{elem.id}' requires A/Iy/Iz/J > 0 for 3D frame solver")
 
             R = self._build_3d_rotation_matrix(vec / L, elem_id=elem.id)
             T = np.zeros((12, 12), dtype=float)
@@ -986,9 +852,14 @@ class StaticAnalyzer:
                 for c_idx in range(12):
                     K[dofs[r], dofs[c_idx]] += k_global[r, c_idx]
 
-            wy = sum(item[0] for item in element_distributed_loads.get(elem.id, []))
-            wz = sum(item[1] for item in element_distributed_loads.get(elem.id, []))
-            f_local_dist = self._build_3d_uniform_load_vector(wy, wz, L)
+            local_loads = [
+                self._distributed_load_local_components(load, elem)
+                for load in element_distributed_loads.get(elem.id, [])
+            ]
+            wx = sum(item[0] for item in local_loads)
+            wy = sum(item[1] for item in local_loads)
+            wz = sum(item[2] for item in local_loads)
+            f_local_dist = self._build_3d_uniform_load_vector(wx, wy, wz, L)
             if np.any(np.abs(f_local_dist) > 0.0):
                 F[dofs] += T.T @ f_local_dist
 
@@ -998,6 +869,7 @@ class StaticAnalyzer:
                 'transform': T,
                 'f_local_dist': f_local_dist,
                 'A': A,
+                'local_axes': R,
             }
 
         for load in load_list:
@@ -1067,6 +939,12 @@ class StaticAnalyzer:
             m2 = float(np.sqrt(f_local[10] ** 2 + f_local[11] ** 2))
 
             forces[elem.id] = {
+                'referenceFrame': 'element-local',
+                'localAxes': {
+                    'x': meta['local_axes'][0].tolist(),
+                    'y': meta['local_axes'][1].tolist(),
+                    'z': meta['local_axes'][2].tolist(),
+                },
                 'n1': {
                     'N': float(f_local[0]),
                     'V': v1,
@@ -1115,35 +993,69 @@ class StaticAnalyzer:
         })
 
     def _build_3d_rotation_matrix(self, ex: np.ndarray, elem_id: str = None) -> np.ndarray:
-        """构建 3D frame 局部坐标旋转矩阵（局部 x 沿杆轴）。"""
-        # Check metadata for an explicit reference vector first.
-        ref = None
-        if elem_id is not None:
-            try:
-                from coordinate_semantics import get_reference_vector
+        """Build the single canonical element-local direction-cosine matrix."""
+        if elem_id is None or elem_id not in self.elements:
+            raise ValueError("A known element id is required to construct local axes")
+        elem = self.elements[elem_id]
+        start = self.nodes[elem.nodes[0]]
+        end = self.nodes[elem.nodes[1]]
 
-                explicit = get_reference_vector(self._get_coordinate_metadata(), elem_id)
-                if explicit is not None:
-                    ref = np.array(explicit, dtype=float)
-            except Exception:
-                logger.debug("Could not read metadata reference vectors; using geometry fallback", exc_info=True)
+        from coordinate_semantics import build_element_local_axes, get_reference_vector
 
-        if ref is None:
-            ref = np.array([0.0, 0.0, 1.0], dtype=float)
-            if abs(float(np.dot(ex, ref))) > 0.98:
-                ref = np.array([0.0, 1.0, 0.0], dtype=float)
+        reference = get_reference_vector(self._get_coordinate_metadata(), elem_id)
+        axes = build_element_local_axes(
+            [start.x, start.y, start.z],
+            [end.x, end.y, end.z],
+            reference,
+            getattr(elem, 'rotation_angle', None),
+        )
+        expected_x = np.asarray(ex, dtype=float)
+        expected_x /= float(np.linalg.norm(expected_x))
+        if not np.allclose(axes[0], expected_x, atol=1e-10):
+            raise ValueError(f"Element '{elem_id}' local X axis is inconsistent with its geometry")
+        return axes
 
-        ey = np.cross(ref, ex)
-        ey_norm = float(np.linalg.norm(ey))
-        if ey_norm <= 0.0:
-            raise ValueError("Cannot construct local y-axis for 3D frame element")
-        ey /= ey_norm
-        ez = np.cross(ex, ey)
-        ez_norm = float(np.linalg.norm(ez))
-        if ez_norm <= 0.0:
-            raise ValueError("Cannot construct local z-axis for 3D frame element")
-        ez /= ez_norm
-        return np.vstack([ex, ey, ez])
+    def _distributed_load_local_components(self, load: Dict[str, Any], elem) -> Tuple[float, float, float]:
+        """Return member-load components in the element-local X/Y/Z axes."""
+        wx = self._to_float(load.get('wx', 0.0), 0.0)
+        wy = self._to_float(load.get('wy', 0.0), 0.0)
+        wz = self._to_float(load.get('wz', 0.0), 0.0)
+        if load.get('reference_frame', 'global') == 'element-local':
+            return wx, wy, wz
+
+        start = self.nodes[elem.nodes[0]]
+        end = self.nodes[elem.nodes[1]]
+        vector = np.array([end.x - start.x, end.y - start.y, end.z - start.z], dtype=float)
+        length = float(np.linalg.norm(vector))
+        if length <= 0.0:
+            raise ValueError(f"Element '{elem.id}' has zero length")
+        axes = self._build_3d_rotation_matrix(vector / length, elem_id=elem.id)
+
+        from coordinate_semantics import transform_global_vector_to_local
+
+        return transform_global_vector_to_local([wx, wy, wz], axes)
+
+    def _distributed_load_planar_components(self, load: Dict[str, Any], elem) -> Tuple[float, float]:
+        """Return local axial/transverse loads for a canonical X-Z member."""
+        wx = self._to_float(load.get('wx', 0.0), 0.0)
+        wy = self._to_float(load.get('wy', 0.0), 0.0)
+        wz = self._to_float(load.get('wz', 0.0), 0.0)
+        if load.get('reference_frame', 'global') == 'element-local':
+            if abs(wy) > 1e-12:
+                raise ValueError(f"Element '{elem.id}' has an out-of-plane local wy load in a 2-D model")
+            return wx, wz
+        if abs(wy) > 1e-12:
+            raise ValueError(f"Element '{elem.id}' has an out-of-plane global wy load in a 2-D model")
+
+        start = self.nodes[elem.nodes[0]]
+        end = self.nodes[elem.nodes[1]]
+        from coordinate_semantics import planar_xz_local_components
+
+        return planar_xz_local_components(
+            [wx, wy, wz],
+            [start.x, start.y, start.z],
+            [end.x, end.y, end.z],
+        )
 
     def _build_3d_frame_local_stiffness(
         self,
@@ -1219,9 +1131,12 @@ class StaticAnalyzer:
 
         return k
 
-    def _build_3d_uniform_load_vector(self, wy: float, wz: float, L: float) -> np.ndarray:
-        """Equivalent nodal load vector for local-y/local-z uniform beam loads."""
+    def _build_3d_uniform_load_vector(self, wx: float, wy: float, wz: float, L: float) -> np.ndarray:
+        """Equivalent nodal load vector for local uniform member loads."""
         f = np.zeros(12, dtype=float)
+        if abs(wx) > 0.0:
+            f[0] += wx * L / 2.0
+            f[6] += wx * L / 2.0
         if abs(wy) > 0.0:
             f[1] += wy * L / 2.0
             f[5] += wy * (L ** 2) / 12.0
@@ -1930,10 +1845,27 @@ class StaticAnalyzer:
         return summary
 
     def _attach_floor_load_transfer(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        from coordinate_semantics import coordinate_contract_metadata
+
+        existing_meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
+        result_with_coordinates = {
+            **result,
+            'meta': {
+                **existing_meta,
+                **coordinate_contract_metadata(self.model),
+                'units': {
+                    'length': 'm',
+                    'force': 'kN',
+                    'moment': 'kN.m',
+                    'displacement': 'm',
+                    'rotation': 'rad',
+                },
+            },
+        }
         summary = self._floor_load_transfer_summary()
         if summary is None:
-            return result
-        return {**result, 'floorLoadTransfer': summary}
+            return result_with_coordinates
+        return {**result_with_coordinates, 'floorLoadTransfer': summary}
 
     def _story_floor_load_components(self, story: Any) -> List[Tuple[str, float]]:
         components: List[Tuple[str, float]] = []
@@ -2080,7 +2012,7 @@ class StaticAnalyzer:
     def _scale_load(self, load: Dict[str, Any], factor: float) -> Dict[str, Any]:
         """按组合系数缩放荷载中的数值字段。"""
         scaled = dict(load)
-        numeric_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz', 'momentX', 'momentY', 'momentZ', 'wy', 'wz']
+        numeric_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz', 'wx', 'wy', 'wz']
         for key in numeric_keys:
             if key in scaled:
                 scaled[key] = float(scaled[key]) * factor
@@ -2090,85 +2022,134 @@ class StaticAnalyzer:
 
     def _normalize_load(self, load: Any) -> Optional[Dict[str, Any]]:
         if not isinstance(load, dict):
-            return None
+            raise ValueError("Every structural load must be an object")
 
         load_type = str(load.get('type', '')).lower()
+        node_targets = [load.get(key) for key in ('node', 'nodeId', 'node_id') if load.get(key) is not None]
+        element_targets = [load.get(key) for key in ('element', 'elementId', 'element_id') if load.get(key) is not None]
+        if node_targets and element_targets:
+            raise ValueError("A structural load cannot target both a node and an element")
+        if len({str(value) for value in node_targets}) > 1 or len({str(value) for value in element_targets}) > 1:
+            raise ValueError("A structural load contains conflicting target aliases")
 
-        if load_type == 'distributed' or load.get('element') is not None or load.get('elementId') is not None or load.get('element_id') is not None:
-            element_id = str(load.get('element') or load.get('elementId') or load.get('element_id') or '')
+        if load_type == 'distributed' or element_targets:
+            element_id = str(element_targets[0]) if element_targets else ''
             if not element_id:
-                return None
+                raise ValueError("A distributed load must reference an element")
+            if element_id not in self.elements:
+                raise ValueError(f"Distributed load references unknown element '{element_id}'")
+            if any(key in load for key in ('fx', 'fy', 'fz', 'mx', 'my', 'mz', 'forces')):
+                raise ValueError("Distributed loads must use wx/wy/wz, not nodal force or moment components")
 
             direction = str(load.get('direction', load.get('axis', ''))).lower()
-            raw_magnitude = self._to_float(
-                load.get('wy', load.get('wz', load.get('q', load.get('w', load.get('value', 0.0))))),
-                0.0,
-            )
+            reference_frame = str(load.get(
+                'reference_frame',
+                'element-local' if direction.startswith('local-') else 'global',
+            ))
+            if reference_frame not in {'global', 'element-local'}:
+                raise ValueError(
+                    f"Distributed load on element '{element_id}' has invalid reference_frame '{reference_frame}'"
+                )
+            magnitude_keys = [key for key in ('q', 'w', 'value', 'magnitude') if key in load]
 
+            wx = self._strict_load_number(load.get('wx', 0.0), 'wx')
             if direction in {'z', 'local-z', '2'}:
+                if direction == 'local-z' and reference_frame != 'element-local':
+                    raise ValueError("direction='local-z' requires reference_frame='element-local'")
                 wy = 0.0
-                wz = raw_magnitude
+                wz = self._resolved_directional_load_value(load, magnitude_keys, ('wz',), 'z')
             elif direction in {'y', 'local-y', '1'}:
-                wy = raw_magnitude
+                if direction == 'local-y' and reference_frame != 'element-local':
+                    raise ValueError("direction='local-y' requires reference_frame='element-local'")
+                wy = self._resolved_directional_load_value(load, magnitude_keys, ('wy',), 'y')
+                wz = 0.0
+            elif direction in {'x', 'local-x', '0'}:
+                if direction == 'local-x' and reference_frame != 'element-local':
+                    raise ValueError("direction='local-x' requires reference_frame='element-local'")
+                wx = self._resolved_directional_load_value(load, magnitude_keys, ('wx',), 'x')
+                wy = 0.0
                 wz = 0.0
             else:
-                has_wy = ('wy' in load) or ('fy' in load)
-                has_wz = ('wz' in load) or ('fz' in load)
+                if direction:
+                    raise ValueError(f"Distributed load on element '{element_id}' has unknown direction '{direction}'")
+                has_wy = 'wy' in load
+                has_wz = 'wz' in load
                 if has_wy:
-                    wy = self._to_float(load.get('wy', load.get('fy', 0.0)), 0.0)
+                    wy = self._strict_load_number(load.get('wy'), 'wy')
                 else:
                     wy = 0.0
                 if has_wz:
-                    wz = self._to_float(load.get('wz', load.get('fz', 0.0)), 0.0)
+                    wz = self._strict_load_number(load.get('wz'), 'wz')
                 else:
                     wz = 0.0
-                if (not has_wy) and (not has_wz):
-                    # Backward-compatible fallback for legacy q/w/value payloads.
-                    wz = raw_magnitude
+                if magnitude_keys:
+                    raise ValueError(
+                        f"Distributed load on element '{element_id}' must declare a direction for q/w/value/magnitude"
+                    )
 
             return {
                 'type': 'distributed',
                 'element': element_id,
+                'reference_frame': reference_frame,
+                'wx': wx,
                 'wy': wy,
                 'wz': wz,
             }
 
-        node_id = str(load.get('node') or load.get('nodeId') or load.get('node_id') or '')
+        node_id = str(node_targets[0]) if node_targets else ''
         if not node_id:
-            return None
+            raise ValueError("A nodal load must reference a node")
+        if node_id not in self.nodes:
+            raise ValueError(f"Nodal load references unknown node '{node_id}'")
+        reference_frame = str(load.get('reference_frame', 'global'))
+        if reference_frame != 'global':
+            raise ValueError(f"Nodal load on node '{node_id}' must use reference_frame='global'")
+        if any(key in load for key in ('wx', 'wy', 'wz')):
+            raise ValueError("Nodal loads must use fx/fy/fz, not member-load w components")
+        legacy_names = [
+            key for key in ('Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz', 'momentX', 'momentY', 'momentZ')
+            if key in load
+        ]
+        if legacy_names:
+            raise ValueError("V2 nodal loads must use lowercase component names")
 
         if isinstance(load.get('forces'), list):
-            raw_forces = [self._to_float(value, 0.0) for value in list(load['forces'])[:6]]
-            while len(raw_forces) < 6:
-                raw_forces.append(0.0)
+            if len(load['forces']) != 6:
+                raise ValueError("Nodal load forces must contain [fx, fy, fz, mx, my, mz]")
+            if any(key in load for key in ('fx', 'fy', 'fz', 'mx', 'my', 'mz', 'value', 'magnitude', 'direction', 'axis')):
+                raise ValueError("Nodal load forces cannot be combined with component or directional aliases")
+            raw_forces = [self._strict_load_number(value, f'forces[{index}]') for index, value in enumerate(load['forces'])]
             fx, fy, fz, mx, my, mz = raw_forces
         else:
             direction = str(load.get('direction', load.get('axis', ''))).lower()
-            directional_value = self._to_float(load.get('value', load.get('magnitude', 0.0)), 0.0)
+            magnitude_keys = [key for key in ('value', 'magnitude') if key in load]
 
-            fx = self._to_float(load.get('fx', load.get('Fx', 0.0)), 0.0)
-            fy = self._to_float(load.get('fy', load.get('Fy', load.get('wy', 0.0))), 0.0)
-            fz = self._to_float(load.get('fz', load.get('Fz', load.get('wz', 0.0))), 0.0)
-            mx = self._to_float(load.get('mx', load.get('Mx', load.get('momentX', 0.0))), 0.0)
-            my = self._to_float(load.get('my', load.get('My', load.get('momentY', 0.0))), 0.0)
-            mz = self._to_float(load.get('mz', load.get('Mz', load.get('momentZ', 0.0))), 0.0)
+            fx = self._strict_load_number(load.get('fx', 0.0), 'fx')
+            fy = self._strict_load_number(load.get('fy', 0.0), 'fy')
+            fz = self._strict_load_number(load.get('fz', 0.0), 'fz')
+            mx = self._strict_load_number(load.get('mx', 0.0), 'mx')
+            my = self._strict_load_number(load.get('my', 0.0), 'my')
+            mz = self._strict_load_number(load.get('mz', 0.0), 'mz')
 
             if direction in {'x', 'fx'}:
-                fx = directional_value
+                fx = self._resolved_directional_load_value(load, magnitude_keys, ('fx',), 'x')
             elif direction in {'y', 'fy'}:
-                fy = directional_value
+                fy = self._resolved_directional_load_value(load, magnitude_keys, ('fy',), 'y')
             elif direction in {'z', 'fz'}:
-                fz = directional_value
+                fz = self._resolved_directional_load_value(load, magnitude_keys, ('fz',), 'z')
             elif direction in {'mx', 'rx'}:
-                mx = directional_value
+                mx = self._resolved_directional_load_value(load, magnitude_keys, ('mx',), 'mx')
             elif direction in {'my', 'ry'}:
-                my = directional_value
+                my = self._resolved_directional_load_value(load, magnitude_keys, ('my',), 'my')
             elif direction in {'mz', 'rz'}:
-                mz = directional_value
+                mz = self._resolved_directional_load_value(load, magnitude_keys, ('mz',), 'mz')
+            elif direction:
+                raise ValueError(f"Nodal load on node '{node_id}' has unknown direction '{direction}'")
 
         return {
             'type': 'nodal',
             'node': node_id,
+            'reference_frame': 'global',
             'fx': fx,
             'fy': fy,
             'fz': fz,
@@ -2177,6 +2158,35 @@ class StaticAnalyzer:
             'mz': mz,
             'forces': [fx, fy, fz, mx, my, mz],
         }
+
+    def _strict_load_number(self, value: Any, label: str) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Load component '{label}' must be finite") from error
+        if not math.isfinite(number):
+            raise ValueError(f"Load component '{label}' must be finite")
+        return number
+
+    def _resolved_directional_load_value(
+        self,
+        load: Dict[str, Any],
+        magnitude_keys: List[str],
+        component_keys: Tuple[str, ...],
+        direction: str,
+    ) -> float:
+        values = [
+            (key, self._strict_load_number(load[key], key))
+            for key in [*magnitude_keys, *component_keys]
+            if key in load
+        ]
+        if not values:
+            raise ValueError(f"Directional load '{direction}' must provide a finite magnitude")
+        reference = values[0][1]
+        if any(abs(value - reference) > 1e-9 for _, value in values[1:]):
+            keys = ', '.join(key for key, _ in values)
+            raise ValueError(f"Directional load '{direction}' has conflicting values in {keys}")
+        return reference
 
     def _to_float(self, value: Any, fallback: float = 0.0) -> float:
         if isinstance(value, (int, float, np.floating, np.integer)):
@@ -2193,29 +2203,34 @@ class StaticAnalyzer:
         return float(material.E) * 1000.0
 
     def _plane_transverse_force(self, load: Dict[str, Any], plane: str) -> float:
-        primary_key = 'fy' if plane == 'xy' else 'fz'
-        secondary_key = 'fz' if plane == 'xy' else 'fy'
-        primary = self._to_float(load.get(primary_key, 0.0), 0.0)
-        secondary = self._to_float(load.get(secondary_key, 0.0), 0.0)
-        if abs(primary) > 1e-12 or secondary_key not in load:
-            return primary
-        return secondary
+        if plane != 'xz':
+            raise ValueError("Canonical 2-D nodal loads support only the global X-Z plane")
+        out_of_plane = self._to_float(load.get('fy', 0.0), 0.0)
+        if abs(out_of_plane) > 1e-12:
+            raise ValueError("Global fy is out of plane for a canonical X-Z 2-D model")
+        return self._to_float(load.get('fz', 0.0), 0.0)
 
     def _plane_bending_moment(self, load: Dict[str, Any], plane: str) -> float:
-        primary_key = 'mz' if plane == 'xy' else 'my'
-        secondary_key = 'my' if plane == 'xy' else 'mz'
-        primary = self._to_float(load.get(primary_key, 0.0), 0.0)
-        secondary = self._to_float(load.get(secondary_key, 0.0), 0.0)
-        if abs(primary) > 1e-12 or secondary_key not in load:
-            return primary
-        return secondary
+        if plane != 'xz':
+            raise ValueError("Canonical 2-D nodal moments support only the global X-Z plane")
+        mx = self._to_float(load.get('mx', 0.0), 0.0)
+        mz = self._to_float(load.get('mz', 0.0), 0.0)
+        if abs(mx) > 1e-12 or abs(mz) > 1e-12:
+            raise ValueError("Only global my is active for a canonical X-Z 2-D model")
+        return self._to_float(load.get('my', 0.0), 0.0)
 
     def _plane_distributed_load(self, load: Dict[str, Any], plane: str) -> float:
-        primary = self._to_float(load.get('wy', 0.0), 0.0)
-        secondary = self._to_float(load.get('wz', 0.0), 0.0)
-        if plane == 'xy':
-            return primary if abs(primary) > 1e-12 or 'wz' not in load else secondary
-        return secondary if abs(secondary) > 1e-12 else primary
+        if plane != 'xz':
+            raise ValueError("Canonical 2-D member loads support only the global X-Z plane")
+        if load.get('reference_frame', 'global') == 'element-local':
+            out_of_plane = self._to_float(load.get('wy', 0.0), 0.0)
+            if abs(out_of_plane) > 1e-12:
+                raise ValueError("Local wy is out of plane for a 2-D frame element")
+            return self._to_float(load.get('wz', 0.0), 0.0)
+        out_of_plane = self._to_float(load.get('wy', 0.0), 0.0)
+        if abs(out_of_plane) > 1e-12:
+            raise ValueError("Global wy is out of plane for a canonical X-Z 2-D model")
+        return self._to_float(load.get('wz', 0.0), 0.0)
 
     def _build_envelope(self, displacements: Dict[str, Any], forces: Dict[str, Any], reactions: Dict[str, Any]) -> Dict[str, Any]:
         """构建结果包络：最大位移、内力与反力绝对值。"""
@@ -2308,17 +2323,11 @@ class StaticAnalyzer:
         )
 
     def _get_beam_reference_vector(self, elem) -> List[float]:
-        # Check metadata for an explicit reference vector first.
-        try:
-            from coordinate_semantics import get_reference_vector
+        """Return an OpenSees vecxz that reproduces the canonical local axes."""
+        return self._element_local_axes(elem)[2].tolist()
 
-            explicit = get_reference_vector(self._get_coordinate_metadata(), elem.id)
-            if explicit is not None:
-                return explicit
-        except Exception:
-            logger.debug("Could not read metadata reference vectors; using geometry fallback", exc_info=True)
-
-        # Fallback: geometry-based reference vector
+    def _element_local_axes(self, elem) -> np.ndarray:
+        """Return canonical local X/Y/Z axes for an element."""
         start = self.nodes.get(elem.nodes[0])
         end = self.nodes.get(elem.nodes[1])
         if start is None or end is None:
@@ -2328,12 +2337,7 @@ class StaticAnalyzer:
         length = np.linalg.norm(axis)
         if length == 0:
             raise ValueError(f"Beam element '{elem.id}' has zero length")
-
-        axis /= length
-        reference = np.array([0.0, 0.0, 1.0], dtype=float)
-        if abs(float(np.dot(axis, reference))) > 0.9:
-            reference = np.array([0.0, 1.0, 0.0], dtype=float)
-        return reference.tolist()
+        return self._build_3d_rotation_matrix(axis / length, elem_id=elem.id)
 
     def _generate_summary(self, displacements: Dict, forces: Dict) -> Dict:
         """生成分析结果摘要"""

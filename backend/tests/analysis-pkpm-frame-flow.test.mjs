@@ -525,18 +525,34 @@ function buildRcUserScenarioModel() {
 
 function buildGenericRcFrameModelWithLegacyRectSections() {
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
+    coordinate_system: {
+      semantics: 'global-z-up',
+      version: 1,
+      dimension: '3d',
+      plane: null,
+      dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+    },
     nodes: [
       { id: 'N1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
       { id: 'N2', x: 6, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-      { id: 'N3', x: 0, y: 0, z: 3.6 },
-      { id: 'N4', x: 6, y: 0, z: 3.6 },
+      { id: 'N3', x: 0, y: 6, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: 'N4', x: 6, y: 6, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: 'N5', x: 0, y: 0, z: 3.6 },
+      { id: 'N6', x: 6, y: 0, z: 3.6 },
+      { id: 'N7', x: 0, y: 6, z: 3.6 },
+      { id: 'N8', x: 6, y: 6, z: 3.6 },
     ],
     elements: [
-      { id: 'C1', type: 'column', nodes: ['N1', 'N3'], material: 'MAT1', section: 'SEC1' },
-      { id: 'C2', type: 'column', nodes: ['N2', 'N4'], material: 'MAT1', section: 'SEC1' },
-      { id: 'B1', type: 'beam', nodes: ['N3', 'N4'], material: 'MAT1', section: 'SEC2' },
+      { id: 'C1', type: 'column', nodes: ['N1', 'N5'], material: 'MAT1', section: 'SEC1' },
+      { id: 'C2', type: 'column', nodes: ['N2', 'N6'], material: 'MAT1', section: 'SEC1' },
+      { id: 'C3', type: 'column', nodes: ['N3', 'N7'], material: 'MAT1', section: 'SEC1' },
+      { id: 'C4', type: 'column', nodes: ['N4', 'N8'], material: 'MAT1', section: 'SEC1' },
+      { id: 'BX1', type: 'beam', nodes: ['N5', 'N6'], material: 'MAT1', section: 'SEC2' },
+      { id: 'BX2', type: 'beam', nodes: ['N7', 'N8'], material: 'MAT1', section: 'SEC2' },
+      { id: 'BY1', type: 'beam', nodes: ['N5', 'N7'], material: 'MAT1', section: 'SEC2' },
+      { id: 'BY2', type: 'beam', nodes: ['N6', 'N8'], material: 'MAT1', section: 'SEC2' },
     ],
     materials: [
       { id: 'MAT1', name: 'Concrete_C30', E: 30000, nu: 0.2, rho: 2500 },
@@ -550,7 +566,12 @@ function buildGenericRcFrameModelWithLegacyRectSections() {
     ],
     load_cases: [],
     load_combinations: [],
-    metadata: { source: 'generic-llm-draft' },
+    metadata: {
+      source: 'generic-llm-draft',
+      coordinateSemantics: 'global-z-up',
+      coordinateContractVersion: 1,
+      frameDimension: '3d',
+    },
   };
 }
 
@@ -608,8 +629,15 @@ function buildGenericYUpRcFrameModel() {
   }
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
+    coordinate_system: {
+      semantics: 'global-z-up',
+      version: 1,
+      dimension: '3d',
+      plane: null,
+      dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+    },
     nodes,
     elements,
     materials: [
@@ -677,6 +705,9 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'Column.SetSteelGrade')).toHaveLength(0);
     expect(findCalls(payload, 'Beam.SetSteelGrade')).toHaveLength(0);
     expect(findCalls(payload, 'RealFloor.SetFloorHeight').map((call) => call.height)).toEqual([3600, 3600]);
+    expect(findCalls(payload, 'RealFloor.SetBottomElevation').map((call) => call.elevation)).toEqual([0, 3600]);
+    expect(findCalls(payload, 'StandFloor.AddColumn')).toHaveLength(6);
+    expect(findCalls(payload, 'StandFloor.AddBeamEx')).toHaveLength(7);
     expect(nodeCoords).toEqual(expect.arrayContaining([
       { x: 0, y: 0 },
       { x: 6000, y: 0 },
@@ -785,6 +816,7 @@ describe('PKPM frame analysis flow', () => {
       live_load: 0,
       floor_loads: [{ type: 'dead', value: 0 }, { type: 'live', value: 0 }],
     };
+    model.load_cases = model.load_cases.map((loadCase) => ({ ...loadCase, loads: [] }));
 
     const payload = runPkpmRuntime(model);
 
@@ -949,37 +981,12 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'Beam.SetSteelGrade')).toHaveLength(0);
   });
 
-  test('normalizes generic y-up RC frame drafts before PKPM conversion', () => {
-    const payload = runPkpmRuntime(buildGenericYUpRcFrameModel());
-    const nodeCoords = findCalls(payload, 'StandFloor.AddNode').map((call) => ({ x: call.x, y: call.y }));
+  test('rejects a mislabeled Y-up draft instead of reinterpreting coordinates', () => {
+    const payload = runPkpmRuntime(buildGenericYUpRcFrameModel(), { expectFailure: true });
 
-    expect(payload.result.status).toBe('success');
-    expect(payload.result.summary.materialFamily).toBe('concrete');
-    expect(findCalls(payload, 'RealFloor.SetFloorHeight').map((call) => call.height)).toEqual([3600, 3600]);
-    expect(findCalls(payload, 'StandFloor.AddColumn')).toHaveLength(6);
-    expect(findCalls(payload, 'StandFloor.AddBeamEx')).toHaveLength(14);
-    expect(findCalls(payload, 'ColumnSection.SetUserSect')).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: 'IDSec_Rectangle',
-        shape: expect.objectContaining({ B: 600, H: 600, M: 6 }),
-      }),
-    ]));
-    expect(findCalls(payload, 'BeamSection.SetUserSect')).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: 'IDSec_Rectangle',
-        shape: expect.objectContaining({ B: 500, H: 250, M: 6 }),
-      }),
-    ]));
-    expect(findCalls(payload, 'Column.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
-    expect(findCalls(payload, 'Beam.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
-    expect(nodeCoords).toEqual(expect.arrayContaining([
-      { x: 0, y: 0 },
-      { x: 6000, y: 0 },
-      { x: 12000, y: 0 },
-      { x: 0, y: 6000 },
-      { x: 6000, y: 6000 },
-      { x: 12000, y: 6000 },
-    ]));
+    expect(payload.result).toBeUndefined();
+    expect(payload.error).toContain('must be horizontal in the global X-Y floor plane');
+    expect(findCalls(payload, 'StandFloor.AddNode')).toHaveLength(0);
   });
 
   test('keeps steel-frame PKPM flow on steel sections and steel SATWE material', () => {
@@ -988,11 +995,13 @@ describe('PKPM frame analysis flow', () => {
       structuralTypeKey: 'frame',
       skillId: 'frame',
       updatedAt: 0,
-      frameDimension: '2d',
+      frameDimension: '3d',
       storyCount: 2,
-      bayCount: 2,
+      bayCountX: 2,
+      bayCountY: 1,
       storyHeightsM: [3.6, 3.6],
-      bayWidthsM: [6, 6],
+      bayWidthsXM: [6, 6],
+      bayWidthsYM: [6],
       floorLoads: [
         { story: 1, verticalKN: 180 },
         { story: 2, verticalKN: 180 },

@@ -3,13 +3,14 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from typing import List, Dict, Any, Optional
 import logging
 import os
 import traceback
 
 from registry import AnalysisEngineRegistry
+from structure_protocol.migrations import migrate_v1_to_v2
 from structure_protocol.structure_model_v2 import StructureModelV2
 
 # 配置日志
@@ -51,6 +52,13 @@ class AnalysisRequest(BaseModel):
     model: StructureModelV2
     parameters: Dict[str, Any]
     engine_id: Optional[str] = Field(default=None, alias="engineId")
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def migrate_legacy_model(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        return migrate_v1_to_v2(value)
 
 
 class AnalysisResponse(BaseModel):

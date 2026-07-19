@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import APIPyInterface
+from coordinate_semantics import resolve_model_dimension, validate_coordinate_contract
 
 
 # ---------------------------------------------------------------------------
@@ -45,23 +46,24 @@ _GRADE_ALIASES: dict[str, str] = {
 def _resolve_steel_grade(grade_str: str) -> Any:
     """Map V2 steel grade string to APIPyInterface.SteelGrade enum value."""
     sg = APIPyInterface.SteelGrade
-    key = _GRADE_ALIASES.get(grade_str.strip().upper(), grade_str.strip().upper())
+    raw = grade_str.strip().upper()
+    match = re.search(r"(?:Q|S)\d{3}(?:GJ|B)?", raw)
+    token = match.group(0) if match else raw
+    key = _GRADE_ALIASES.get(token, token)
     if hasattr(sg, key):
         return getattr(sg, key)
-    return sg.Q345
+    raise ValueError(f"Unsupported PKPM steel grade '{grade_str}'")
 
 
 def _resolve_concrete_grade(grade_str: str) -> Any:
     """Map V2 concrete grade string to APIPyInterface.ConcreteGrade enum value."""
     cg = APIPyInterface.ConcreteGrade
-    key = grade_str.strip().upper()
+    raw = grade_str.strip().upper()
+    match = re.search(r"C\d{1,2}", raw)
+    key = match.group(0) if match else raw
     if hasattr(cg, key):
         return getattr(cg, key)
-    return cg.C30
-
-
-_STEEL_GRADE_RE = re.compile(r"^[SQ]\d{3}", re.IGNORECASE)
-_CONCRETE_GRADE_TOKEN_RE = re.compile(r"\bC\d{1,2}\b", re.IGNORECASE)
+    raise ValueError(f"Unsupported PKPM concrete grade '{grade_str}'")
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -69,41 +71,66 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def _detect_material_family(data: dict) -> str:
-    """Detect dominant material from model: 'steel' or 'concrete'."""
+    """Resolve one explicit material family without silently choosing a default."""
     metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     material_system = str(metadata.get("materialSystem", "")).lower()
-    if "concrete" in material_system:
-        return "concrete"
-    if "steel" in material_system:
-        return "steel"
+    declared_family = (
+        "concrete" if "concrete" in material_system
+        else "steel" if "steel" in material_system
+        else None
+    )
 
     structure_system = data.get("structure_system") if isinstance(data.get("structure_system"), dict) else {}
     structure_extra = structure_system.get("extra") if isinstance(structure_system.get("extra"), dict) else {}
     structure_material = str(structure_extra.get("materialSystem", "")).lower()
-    if "concrete" in structure_material:
-        return "concrete"
-    if "steel" in structure_material:
-        return "steel"
+    structure_family = (
+        "concrete" if "concrete" in structure_material
+        else "steel" if "steel" in structure_material
+        else None
+    )
+    if declared_family and structure_family and declared_family != structure_family:
+        raise ValueError("PKPM material-family metadata is contradictory")
+    declared_family = declared_family or structure_family
 
     materials = data.get("materials")
-    if not isinstance(materials, list):
-        return "steel"
-
+    if not isinstance(materials, list) or not materials:
+        raise ValueError("PKPM conversion requires explicit materials")
+    material_families: dict[str, str] = {}
     for mat in materials:
         if not isinstance(mat, dict):
-            continue
+            raise ValueError("PKPM material entries must be objects")
+        material_id = str(mat.get("id", ""))
         family = str(mat.get("family", "")).lower()
-        if family in ("steel", "concrete"):
-            return family
         category = str(mat.get("category", "")).lower()
-        if category in ("steel", "concrete"):
-            return category
-        name = str(mat.get("name", ""))
-        if "concrete" in name.lower() or _CONCRETE_GRADE_TOKEN_RE.search(name):
-            return "concrete"
-        if _STEEL_GRADE_RE.match(name):
-            return "steel"
-    return "steel"
+        explicit = family if family in ("steel", "concrete") else category
+        grade_text = str(mat.get("grade") or mat.get("name") or "")
+        inferred = (
+            "concrete"
+            if "concrete" in grade_text.lower() or re.search(r"C\d{1,2}", grade_text, re.IGNORECASE)
+            else "steel"
+            if "steel" in grade_text.lower() or re.search(r"(?:Q|S)\d{3}", grade_text, re.IGNORECASE)
+            else None
+        )
+        resolved = explicit if explicit in ("steel", "concrete") else inferred
+        if resolved is None:
+            continue
+        if explicit in ("steel", "concrete") and inferred and explicit != inferred:
+            raise ValueError(f"PKPM material '{material_id}' family conflicts with its grade/name")
+        material_families[material_id] = resolved
+
+    used_families: set[str] = set()
+    for element in data.get("elements", []):
+        material_id = str(element.get("material", ""))
+        family = material_families.get(material_id)
+        if family is None:
+            raise ValueError(f"PKPM element '{element.get('id')}' references an unknown material")
+        used_families.add(family)
+    if len(used_families) != 1:
+        raise ValueError("PKPM conversion requires all modeled members to use one material family")
+    resolved_family = next(iter(used_families))
+    if declared_family and declared_family != resolved_family:
+        raise ValueError("PKPM material-family metadata conflicts with modeled members")
+    return resolved_family
 
 
 # ---------------------------------------------------------------------------
@@ -239,176 +266,294 @@ def _shape_from_legacy_properties(sec: dict) -> dict | None:
 
 
 def _infer_section_roles(data: dict) -> dict[str, str]:
-    """Build {section_id: "col"|"beam"} by scanning element types.
-
-    Falls back to sec.get("purpose") when no element references the section.
-    A section used by both columns and beams is registered as "col" so that
-    PKPM's AddColumn() receives a ColumnSection index.
-    """
+    """Build an unambiguous {section_id: "col"|"beam"} mapping."""
     roles: dict[str, str] = {}
     for elem in data.get("elements", []):
         sec_id = elem.get("section", "")
         if not sec_id:
             continue
-        etype = elem.get("type", "beam")
-        if etype == "column":
-            roles[sec_id] = "col"   # column wins over beam
-        elif sec_id not in roles:
-            roles[sec_id] = "beam"
+        etype = elem.get("type", "")
+        role = "col" if etype == "column" else "beam" if etype == "beam" else None
+        if role is None:
+            continue
+        if sec_id in roles and roles[sec_id] != role:
+            raise ValueError(
+                f"PKPM conversion requires separate section ids for beams and columns; '{sec_id}' is shared"
+            )
+        roles[sec_id] = role
     return roles
 
 
 def _safe_coord(node: dict, axis: str) -> float:
     try:
-        return float(node.get(axis, 0.0))
-    except (TypeError, ValueError):
-        return 0.0
+        value = float(node[axis])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"Node '{node.get('id')}' global {axis.upper()} must be finite") from error
+    if not math.isfinite(value):
+        raise ValueError(f"Node '{node.get('id')}' global {axis.upper()} must be finite")
+    return value
 
 
-def _section_hint_map(data: dict) -> dict[str, str]:
-    hints: dict[str, str] = {}
-    for sec in data.get("sections", []):
-        sec_id = str(sec.get("id", ""))
-        if not sec_id:
-            continue
-        hints[sec_id] = " ".join([
-            str(sec.get("id", "")),
-            str(sec.get("name", "")),
-            str(sec.get("purpose", "")),
-            str(sec.get("type", "")),
-        ]).lower()
-    return hints
-
-
-def _vertical_axis_score(data: dict, axis: str) -> float:
-    """Score how likely an axis is the vertical axis.
-
-    Generic LLM drafts sometimes use x/z as plan axes and y as height while
-    still tagging metadata as global-z-up.  We detect this from element
-    geometry instead of trusting metadata.
-    """
-    nodes_by_id = {str(n.get("id")): n for n in data.get("nodes", [])}
-    other_axes = [candidate for candidate in ("x", "y", "z") if candidate != axis]
-    section_hints = _section_hint_map(data)
-    score = 0.0
-    tol = 1e-6
-
-    for elem in data.get("elements", []):
-        node_ids = elem.get("nodes", [])
-        if len(node_ids) < 2:
-            continue
-        n1 = nodes_by_id.get(str(node_ids[0]))
-        n2 = nodes_by_id.get(str(node_ids[1]))
-        if n1 is None or n2 is None:
-            continue
-        if abs(_safe_coord(n1, axis) - _safe_coord(n2, axis)) <= tol:
-            continue
-        if any(abs(_safe_coord(n1, other) - _safe_coord(n2, other)) > tol for other in other_axes):
-            continue
-
-        score += 1.0
-        hint = section_hints.get(str(elem.get("section", "")), "")
-        if any(token in hint for token in ("col", "column", "柱")):
-            score += 2.0
-        if any(token in hint for token in ("beam", "梁")):
-            score -= 0.5
-
-    return score
-
-
-def _infer_vertical_axis(data: dict) -> str:
-    stories = data.get("stories")
-    typed_columns = sum(1 for elem in data.get("elements", []) if elem.get("type") == "column")
-    z_score = _vertical_axis_score(data, "z")
-    y_score = _vertical_axis_score(data, "y")
-
-    if y_score > z_score and (not stories or typed_columns == 0):
-        return "y"
-    return "z"
-
-
-def _dedupe_sorted_levels(values: list[float]) -> list[float]:
-    levels: list[float] = []
-    for value in sorted(values):
-        if not levels or abs(value - levels[-1]) > 1e-6:
-            levels.append(value)
-    return levels
-
-
-def _infer_stories_from_nodes(nodes: list[dict]) -> list[dict]:
-    levels = _dedupe_sorted_levels([_safe_coord(node, "z") for node in nodes])
-    if len(levels) < 2:
-        return []
-
-    stories: list[dict] = []
-    for index, (lower, upper) in enumerate(zip(levels, levels[1:]), start=1):
-        height = upper - lower
-        if height <= 1e-6:
-            continue
-        stories.append({
-            "id": f"S{index}",
-            "level": index,
-            "elevation": lower,
-            "height": height,
-        })
-    return stories
+def _finite_number(value: Any, label: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be finite") from error
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be finite")
+    return number
 
 
 def _normalize_generic_frame_for_pkpm(data: dict) -> tuple[dict, dict[str, Any]]:
-    """Normalize generic frame drafts to PKPM's x/y-plan + z-height convention."""
-    vertical_axis = _infer_vertical_axis(data)
-    transform_y_up = vertical_axis == "y"
-
-    nodes: list[dict] = []
-    for node in data.get("nodes", []):
-        normalized = dict(node)
-        if transform_y_up:
-            normalized["x"] = _safe_coord(node, "x")
-            normalized["y"] = _safe_coord(node, "z")
-            normalized["z"] = _safe_coord(node, "y")
-        nodes.append(normalized)
+    """Validate canonical member roles without reinterpreting coordinates."""
+    nodes = [dict(node) for node in data.get("nodes", [])]
 
     node_by_id = {str(node.get("id")): node for node in nodes}
     elements: list[dict] = []
     tol = 1e-6
-    inferred_columns = 0
     for elem in data.get("elements", []):
         normalized = dict(elem)
         node_ids = list(normalized.get("nodes", []))
-        if len(node_ids) >= 2:
-            n1 = node_by_id.get(str(node_ids[0]))
-            n2 = node_by_id.get(str(node_ids[1]))
-            if n1 is not None and n2 is not None:
-                same_plan = (
-                    abs(_safe_coord(n1, "x") - _safe_coord(n2, "x")) <= tol
-                    and abs(_safe_coord(n1, "y") - _safe_coord(n2, "y")) <= tol
-                )
-                vertical_delta = abs(_safe_coord(n1, "z") - _safe_coord(n2, "z"))
-                if same_plan and vertical_delta > tol:
-                    if normalized.get("type") != "column":
-                        inferred_columns += 1
-                    normalized["type"] = "column"
-                    if _safe_coord(n1, "z") > _safe_coord(n2, "z"):
-                        normalized["nodes"] = [node_ids[1], node_ids[0], *node_ids[2:]]
+        element_id = str(normalized.get("id", "?"))
+        element_type = str(normalized.get("type", ""))
+        if element_type not in {"beam", "column"}:
+            raise ValueError(f"PKPM coordinate-preserving conversion does not support element type '{element_type}'")
+        if len(node_ids) != 2:
+            raise ValueError(f"PKPM line element '{element_id}' must reference exactly two nodes")
+        n1 = node_by_id.get(str(node_ids[0]))
+        n2 = node_by_id.get(str(node_ids[1]))
+        if n1 is None or n2 is None:
+            raise ValueError(f"PKPM element '{element_id}' references an unknown node")
+        same_plan = (
+            abs(_safe_coord(n1, "x") - _safe_coord(n2, "x")) <= tol
+            and abs(_safe_coord(n1, "y") - _safe_coord(n2, "y")) <= tol
+        )
+        z1 = _safe_coord(n1, "z")
+        z2 = _safe_coord(n2, "z")
+        if element_type == "column" and (not same_plan or z2 <= z1 + tol):
+            raise ValueError(
+                f"PKPM column '{element_id}' must be ordered from lower to upper node on one global X/Y plan point"
+            )
+        if element_type == "beam" and (same_plan or abs(z2 - z1) > tol):
+            raise ValueError(f"PKPM beam '{element_id}' must be horizontal in the global X-Y floor plane")
+        if abs(float(normalized.get("rotation_angle", 0.0) or 0.0)) > tol:
+            raise ValueError(f"PKPM adapter cannot yet preserve rotation_angle on element '{element_id}'")
+        if normalized.get("offsets"):
+            raise ValueError(f"PKPM adapter cannot yet preserve end offsets on element '{element_id}'")
         elements.append(normalized)
 
     raw_stories = data.get("stories", [])
-    stories = [dict(story) for story in raw_stories] if raw_stories else _infer_stories_from_nodes(nodes)
+    if not isinstance(raw_stories, list) or not raw_stories:
+        raise ValueError("PKPM conversion requires explicit stories; story elevations and loads are not inferred")
+    stories = sorted(
+        [dict(story) for story in raw_stories],
+        key=lambda story: float(story.get("elevation", 0.0)),
+    )
+    z_levels = sorted({_safe_coord(node, "z") for node in nodes})
+    if len(stories) != len(z_levels) - 1:
+        raise ValueError("PKPM conversion requires one explicit story for every adjacent global Z interval")
+    if abs(z_levels[0]) > tol:
+        raise ValueError("PKPM floor conversion currently requires the base at global Z=0")
+
+    story_ids: list[str] = []
+    for index, story in enumerate(stories):
+        story_id = str(story.get("id", ""))
+        try:
+            elevation = float(story["elevation"])
+            height = float(story["height"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Story '{story_id}' must declare finite elevation and height") from error
+        if (
+            not math.isfinite(elevation)
+            or not math.isfinite(height)
+            or abs(elevation - z_levels[index]) > tol
+            or abs(elevation + height - z_levels[index + 1]) > tol
+        ):
+            raise ValueError(f"Story '{story_id}' elevation/height conflicts with global Z levels")
+        if not story_id or story_id in story_ids:
+            raise ValueError("PKPM conversion requires unique non-empty story ids")
+        declared_loads = story.get("floor_loads")
+        if declared_loads is not None:
+            if not isinstance(declared_loads, list):
+                raise ValueError(f"Story '{story_id}' floor_loads must be a list")
+            load_values: dict[str, float] = {}
+            for load in declared_loads:
+                if not isinstance(load, dict) or load.get("type") not in {"dead", "live"}:
+                    raise ValueError(
+                        f"Story '{story_id}' floor_loads supports explicit dead/live entries only"
+                    )
+                load_type = str(load["type"])
+                if load_type in load_values:
+                    raise ValueError(f"Story '{story_id}' has duplicate {load_type} floor loads")
+                load_values[load_type] = _nonnegative_float(
+                    load.get("value"), field=f"floor_loads[{load_type}]", story_id=story_id
+                )
+            dead_load, live_load = _story_dead_live_pair(story)
+            if (
+                abs(load_values.get("dead", 0.0) - dead_load) > tol
+                or abs(load_values.get("live", 0.0) - live_load) > tol
+            ):
+                raise ValueError(f"Story '{story_id}' floor_loads conflict with dead_load/live_load")
+        story_ids.append(story_id)
+
+    plan_by_level: dict[float, set[tuple[float, float]]] = {}
+    for node in nodes:
+        z = _safe_coord(node, "z")
+        plan = (_safe_coord(node, "x"), _safe_coord(node, "y"))
+        level = min(z_levels, key=lambda candidate: abs(candidate - z))
+        if abs(level - z) > tol:
+            raise ValueError(f"Node '{node.get('id')}' does not lie on a declared PKPM floor level")
+        plans = plan_by_level.setdefault(level, set())
+        if plan in plans:
+            raise ValueError(f"PKPM conversion cannot preserve coincident node '{node.get('id')}'")
+        plans.add(plan)
+        restraints = tuple(node.get("restraints") or [False] * 6)
+        if len(restraints) != 6 or any(type(value) is not bool for value in restraints):
+            raise ValueError(f"Node '{node.get('id')}' restraints must contain six booleans")
+        if abs(z - z_levels[0]) <= tol:
+            if restraints not in {
+                (True, True, True, True, True, True),
+                (True, True, True, False, False, False),
+            }:
+                raise ValueError(f"PKPM cannot preserve base restraints for node '{node.get('id')}'")
+        elif any(restraints):
+            raise ValueError(f"PKPM standard-floor replication cannot preserve restraints on node '{node.get('id')}'")
+
+    reference_plan = plan_by_level[z_levels[0]]
+    if any(plans != reference_plan for plans in plan_by_level.values()):
+        raise ValueError("PKPM standard-floor replication requires identical plan nodes on every level")
+
+    topology_by_floor: dict[int, dict[str, dict[tuple[tuple[float, float], tuple[float, float]], tuple[str, str, Any, Any]]]] = {
+        index: {"beam": {}, "column": {}}
+        for index in range(1, len(z_levels))
+    }
+    for element in elements:
+        element_id = str(element.get("id", ""))
+        node_ids = element.get("nodes", [])
+        start = node_by_id[str(node_ids[0])]
+        end = node_by_id[str(node_ids[1])]
+        start_z = _safe_coord(start, "z")
+        end_z = _safe_coord(end, "z")
+        element_type = str(element.get("type"))
+        level_z = end_z if element_type == "column" else start_z
+        try:
+            floor_index = next(
+                index for index, value in enumerate(z_levels)
+                if index > 0 and abs(value - level_z) <= tol
+            )
+        except StopIteration as error:
+            raise ValueError(f"Element '{element_id}' does not map to a natural floor") from error
+        expected_story = story_ids[floor_index - 1]
+        if element.get("story") is not None and str(element.get("story")) != expected_story:
+            raise ValueError(f"Element '{element_id}' story conflicts with its global Z level")
+        if element.get("releases"):
+            raise ValueError(f"PKPM adapter cannot yet preserve end releases on element '{element_id}'")
+        start_plan = (_safe_coord(start, "x"), _safe_coord(start, "y"))
+        end_plan = (_safe_coord(end, "x"), _safe_coord(end, "y"))
+        topology_key = (start_plan, end_plan) if element_type == "beam" else (start_plan, start_plan)
+        signature = (
+            str(element.get("section", "")),
+            str(element.get("material", "")),
+            element.get("steel_grade") or element.get("concrete_grade"),
+            element.get("rebar_grade"),
+        )
+        floor_topology = topology_by_floor[floor_index][element_type]
+        if topology_key in floor_topology:
+            raise ValueError(f"PKPM conversion cannot preserve duplicate {element_type} '{element_id}'")
+        floor_topology[topology_key] = signature
+
+    template = topology_by_floor[1]
+    for floor_index, topology in topology_by_floor.items():
+        if topology != template:
+            raise ValueError(
+                f"PKPM standard-floor replication cannot preserve topology/section/material changes on floor {floor_index}"
+            )
 
     normalized_data = dict(data)
     normalized_data["nodes"] = nodes
     normalized_data["elements"] = elements
     normalized_data["stories"] = stories
-    if transform_y_up or inferred_columns or (not raw_stories and stories):
-        metadata = dict(normalized_data.get("metadata") or {})
-        metadata["pkpmCoordinateVerticalAxis"] = vertical_axis
-        normalized_data["metadata"] = metadata
-
     return normalized_data, {
-        "vertical_axis": vertical_axis,
-        "inferred_columns": inferred_columns,
-        "inferred_stories": len(stories) if not raw_stories else 0,
+        "vertical_axis": "z",
+        "coordinate_transform": "identity",
+        "inferred_columns": 0,
+        "inferred_stories": 0,
     }
+
+
+def _validate_story_derived_loads(data: dict) -> None:
+    """Allow only exact nodal duplicates of the declared story floor loads.
+
+    PKPM consumes ``stories.dead_load/live_load`` directly.  StructureClaw's
+    concrete-frame builder also emits equivalent global-Z nodal loads for
+    OpenSees.  They may be omitted at this adapter only when their totals and
+    targets exactly agree with the story fields.
+    """
+    load_cases = data.get("load_cases", [])
+    explicit_loads = [
+        load
+        for load_case in load_cases
+        if isinstance(load_case, dict)
+        for load in load_case.get("loads", [])
+        if isinstance(load, dict)
+    ]
+    if not explicit_loads:
+        return
+
+    nodes = {str(node.get("id")): node for node in data.get("nodes", []) if isinstance(node, dict)}
+    stories = {
+        str(story.get("id")): story
+        for story in data.get("stories", [])
+        if isinstance(story, dict)
+    }
+    x_values = [_safe_coord(node, "x") for node in nodes.values()]
+    y_values = [_safe_coord(node, "y") for node in nodes.values()]
+    plan_area = (max(x_values) - min(x_values)) * (max(y_values) - min(y_values))
+    if not math.isfinite(plan_area) or plan_area <= 0:
+        raise ValueError("PKPM story floor loads require a positive global X-Y plan area")
+
+    totals: dict[tuple[str, str], float] = {}
+    for load in explicit_loads:
+        story_id = str(load.get("story", ""))
+        load_kind = str(load.get("load_kind", ""))
+        node_id = str(load.get("node", ""))
+        story = stories.get(story_id)
+        node = nodes.get(node_id)
+        if (
+            load.get("source") != "story_floor_loads"
+            or load.get("type") != "nodal"
+            or load.get("reference_frame", "global") != "global"
+            or load_kind not in {"dead", "live"}
+            or story is None
+            or node is None
+        ):
+            raise ValueError(
+                "The PKPM adapter maps story floor loads only; other nodal/member loads are unsupported"
+            )
+        inactive_components = ("fx", "fy", "mx", "my", "mz", "wx", "wy", "wz")
+        if any(abs(_finite_number(load.get(key, 0.0), f"Load '{node_id}' {key}")) > 1e-9 for key in inactive_components):
+            raise ValueError("PKPM story-derived loads must act only in negative global Z")
+        fz = _finite_number(load.get("fz"), f"Load '{node_id}' fz")
+        if fz > 1e-9:
+            raise ValueError("PKPM story-derived gravity loads must act in negative global Z")
+        story_top = _finite_number(story.get("elevation"), f"Story '{story_id}' elevation") + _finite_number(
+            story.get("height"), f"Story '{story_id}' height"
+        )
+        if abs(_safe_coord(node, "z") - story_top) > 1e-6:
+            raise ValueError(f"Story-derived load on node '{node_id}' targets the wrong global Z level")
+        key = (story_id, load_kind)
+        totals[key] = totals.get(key, 0.0) - fz
+
+    for story_id, story in stories.items():
+        for load_kind, field in (("dead", "dead_load"), ("live", "live_load")):
+            declared = _finite_number(story.get(field, 0.0), f"Story '{story_id}' {field}")
+            expected_total = declared * plan_area
+            actual_total = totals.get((story_id, load_kind), 0.0)
+            tolerance = max(1e-6, abs(expected_total) * 1e-9)
+            if abs(actual_total - expected_total) > tolerance:
+                raise ValueError(
+                    f"Story '{story_id}' {load_kind} nodal-load total conflicts with {field}"
+                )
 
 
 def _register_section(
@@ -483,9 +628,9 @@ def _build_section_registry(
     inferred = _infer_section_roles(data)
     registry: dict[str, tuple[str, int]] = {}
     for sec in sections:
-        purpose = sec.get("purpose", "beam")
-        fallback_role = "col" if purpose == "column" else "beam"
-        role = inferred.get(sec["id"], fallback_role)
+        role = inferred.get(sec["id"])
+        if role is None:
+            continue
         r, pm_idx = _register_section(model, sec, role, material_family)
         registry[sec["id"]] = (r, pm_idx)
     return registry
@@ -511,8 +656,8 @@ def _build_plan_nodes(
     v2_to_xy: dict[str, tuple[float, float]] = {}
 
     for n in nodes:
-        x_mm = round(float(n["x"]) * m_to_mm, 3)
-        y_mm = round(float(n["y"]) * m_to_mm, 3)
+        x_mm = float(n["x"]) * m_to_mm
+        y_mm = float(n["y"]) * m_to_mm
         xy = (x_mm, y_mm)
 
         if xy not in xy_to_pm:
@@ -749,34 +894,35 @@ def _log_design_params(model: APIPyInterface.Model) -> None:
 
 def _elem_grade(elem: dict, mat_id_to_grade: dict[str, str]) -> Any:
     """Resolve steel grade for one element."""
-    grade = (
-        elem.get("steel_grade")
-        or mat_id_to_grade.get(elem.get("material", ""), "Q345")
-    )
+    grade = elem.get("steel_grade") or mat_id_to_grade.get(elem.get("material", ""))
+    if not isinstance(grade, str) or not grade.strip():
+        raise ValueError(f"PKPM steel element '{elem.get('id')}' requires an explicit material grade")
     return _resolve_steel_grade(grade)
 
 
 def _elem_concrete_grade(elem: dict, mat_id_to_grade: dict[str, str]) -> Any:
     """Resolve concrete grade for one element."""
-    grade = (
-        elem.get("concrete_grade")
-        or mat_id_to_grade.get(elem.get("material", ""), "C30")
-    )
+    grade = elem.get("concrete_grade") or mat_id_to_grade.get(elem.get("material", ""))
+    if not isinstance(grade, str) or not grade.strip():
+        raise ValueError(f"PKPM concrete element '{elem.get('id')}' requires an explicit material grade")
     return _resolve_concrete_grade(grade)
 
 
-def _nonnegative_float(value: Any) -> float:
+def _nonnegative_float(value: Any, *, field: str, story_id: str) -> float:
     try:
         number = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return number if number > 0 else 0.0
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Story '{story_id}' {field} must be a finite nonnegative number") from error
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"Story '{story_id}' {field} must be a finite nonnegative number")
+    return number
 
 
 def _story_dead_live_pair(story: dict[str, Any]) -> tuple[float, float]:
+    story_id = str(story.get("id", ""))
     return (
-        _nonnegative_float(story.get("dead_load")),
-        _nonnegative_float(story.get("live_load")),
+        _nonnegative_float(story.get("dead_load", 0.0), field="dead_load", story_id=story_id),
+        _nonnegative_float(story.get("live_load", 0.0), field="live_load", story_id=story_id),
     )
 
 
@@ -866,10 +1012,14 @@ def convert_v2_to_jws(
         ValueError:   If required model data is missing.
         RuntimeError: If PKPM API reports an error.
     """
+    validate_coordinate_contract(data)
+    if resolve_model_dimension(data) != "3d":
+        raise ValueError("PKPM floor-model conversion requires a genuine canonical 3-D model")
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     jws_path = work_dir / f"{project_name}.JWS"
     data, normalization = _normalize_generic_frame_for_pkpm(data)
+    _validate_story_derived_loads(data)
 
     # ---- Setup ----
     model = APIPyInterface.Model()
@@ -879,8 +1029,9 @@ def convert_v2_to_jws(
     # ---- Material → grade lookup ----
     mat_id_to_grade: dict[str, str] = {}
     for mat in data.get("materials", []):
-        grade = mat.get("grade") or mat.get("name", "Q345")
-        mat_id_to_grade[mat["id"]] = grade
+        grade = mat.get("grade") or mat.get("name")
+        if isinstance(grade, str) and grade.strip():
+            mat_id_to_grade[mat["id"]] = grade
 
     # ---- Design parameters from V2 model ----
     site_seismic = _as_dict(data.get("site_seismic"))
@@ -894,14 +1045,6 @@ def convert_v2_to_jws(
 
     # ---- Sections ----
     sec_registry = _build_section_registry(model, data.get("sections", []), data, material_family)
-
-    # Collect first col/beam section index for fallback when element has no section
-    fallback_col_idx = next(
-        (pm_idx for _, (role, pm_idx) in sec_registry.items() if role == "col"), -1
-    )
-    fallback_beam_idx = next(
-        (pm_idx for _, (role, pm_idx) in sec_registry.items() if role == "beam"), -1
-    )
 
     # ---- Standard floor 1 (plan template) ----
     # The model already has floor 1 available by default after CreatNewModel.
@@ -921,6 +1064,8 @@ def convert_v2_to_jws(
     _col_pmid_cache: dict[int, int] = {}
     # Track beam nets to avoid duplicates
     added_nets: dict[tuple[int, int], int] = {}  # (pm_a, pm_b) → net_id
+    # Standard-floor members are defined once and replicated by natural floor.
+    _beam_pmid_cache: dict[tuple[int, int], int] = {}
     # Track V2 element → PKPM mapping for result remapping
     elem_map: dict[str, dict[str, Any]] = {}
 
@@ -932,25 +1077,31 @@ def convert_v2_to_jws(
         if r and len(r) == 6 and any(r):
             pm_id = v2_to_pm.get(n["id"])
             if pm_id is not None:
-                all_fixed = all(r)
-                if not all_fixed:
-                    base_restraint[pm_id] = True  # pinned or partial
+                restraint_tuple = tuple(bool(value) for value in r)
+                if restraint_tuple == (True, True, True, False, False, False):
+                    base_restraint[pm_id] = True
+                elif restraint_tuple != (True, True, True, True, True, True):
+                    raise ValueError(
+                        f"PKPM base support mapping cannot preserve partial restraints for node '{n['id']}'"
+                    )
 
     for elem in elements:
         etype = elem.get("type", "")
         sec_id = elem.get("section", "")
-        role, pm_sec_idx = sec_registry.get(sec_id, ("beam", -1))
+        if sec_id not in sec_registry:
+            raise ValueError(f"PKPM element '{elem.get('id')}' references an unregistered section '{sec_id}'")
+        role, pm_sec_idx = sec_registry[sec_id]
         node_ids = elem.get("nodes", [])
         steel_grade = _elem_grade(elem, mat_id_to_grade) if material_family == "steel" else None
         concrete_grade = _elem_concrete_grade(elem, mat_id_to_grade) if material_family != "steel" else None
 
         if etype == "column":
-            if pm_sec_idx < 0:
-                pm_sec_idx = fallback_col_idx
+            if role != "col" or pm_sec_idx < 0:
+                raise ValueError(f"PKPM column '{elem.get('id')}' does not have a valid column section")
             # Columns: use base (lower) plan node
             pm_node_id = v2_to_pm.get(node_ids[0], -1) if node_ids else -1
             if pm_node_id < 0:
-                continue
+                raise ValueError(f"PKPM column '{elem.get('id')}' could not preserve its plan node")
             if pm_node_id not in plan_nodes_with_col:
                 col_obj = floor.AddColumn(pm_sec_idx, pm_node_id)
                 if material_family == "steel":
@@ -963,9 +1114,10 @@ def convert_v2_to_jws(
                         col_obj.SetSpecial(
                             APIPyInterface.SpecialColumn.IDSp_Constrain_Support, 1.0
                         )
-                    except Exception:
-                        sys.stderr.write(f"[pkpm_converter] SetSpecial(IDSp_Constrain_Support) failed "
-                                         f"for column at node {pm_node_id}\n")
+                    except Exception as error:
+                        raise ValueError(
+                            f"PKPM failed to preserve pinned support at plan node {pm_node_id}"
+                        ) from error
                 plan_nodes_with_col.add(pm_node_id)
                 _col_pmid_cache[pm_node_id] = getattr(col_obj, 'GetPmid', lambda: pm_node_id)()
             elem_map[elem.get("id", "")] = {
@@ -975,37 +1127,31 @@ def convert_v2_to_jws(
             }
 
         elif etype == "beam":
-            if pm_sec_idx < 0:
-                pm_sec_idx = fallback_beam_idx
-            if len(node_ids) < 2:
-                continue
+            if role != "beam" or pm_sec_idx < 0:
+                raise ValueError(f"PKPM beam '{elem.get('id')}' does not have a valid beam section")
             na, nb = node_ids[0], node_ids[1]
             pm_a = v2_to_pm.get(na, -1)
             pm_b = v2_to_pm.get(nb, -1)
             if pm_a < 0 or pm_b < 0 or pm_a == pm_b:
-                continue
+                raise ValueError(f"PKPM beam '{elem.get('id')}' could not preserve its plan endpoints")
 
             net_key = (min(pm_a, pm_b), max(pm_a, pm_b))
             if net_key not in added_nets:
                 net_obj = floor.AddLineNet(pm_a, pm_b)
                 added_nets[net_key] = net_obj.GetID()
-
-            net_id = added_nets[net_key]
-            beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, 0.0)
-            if material_family == "steel":
-                beam_obj.SetSteelGrade(steel_grade)
-            else:
-                beam_obj.SetConcreteGrade(concrete_grade)
+            if net_key not in _beam_pmid_cache:
+                net_id = added_nets[net_key]
+                beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, 0.0)
+                if material_family == "steel":
+                    beam_obj.SetSteelGrade(steel_grade)
+                else:
+                    beam_obj.SetConcreteGrade(concrete_grade)
+                _beam_pmid_cache[net_key] = getattr(beam_obj, 'GetPmid', lambda: net_id)()
             elem_map[elem.get("id", "")] = {
-                "pmid": getattr(beam_obj, 'GetPmid', lambda: net_id)(),
+                "pmid": _beam_pmid_cache[net_key],
                 "type": "beam",
                 "floor_nodes": node_ids,
             }
-
-        elif etype == "brace":
-            # Braces: log a note, skip silently for now
-            sys.stderr.write(f"[pkpm_converter] brace '{elem.get('id')}' skipped "
-                             f"(AddBrace layer mapping not yet supported)\n")
 
     # ---- Natural floors (stories → real floors) ----
     stories = sorted(
@@ -1017,7 +1163,7 @@ def convert_v2_to_jws(
     for story_index, st in enumerate(stories):
         rf = APIPyInterface.RealFloor()
         rf.SetFloorHeight(float(st["height"]) * m_to_mm)
-        rf.SetBottomElevation(float(st.get("elevation", 0)))
+        rf.SetBottomElevation(float(st.get("elevation", 0)) * m_to_mm)
         rf.SetStandFloorIndex(story_standard_floor_indices[story_index])
         model.AddNaturalFloor(rf)
 

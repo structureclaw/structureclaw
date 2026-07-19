@@ -15,6 +15,7 @@ PKPM_WORK_DIR : str, optional
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import subprocess
@@ -24,6 +25,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict
 
+from coordinate_semantics import coordinate_contract_metadata, validate_coordinate_contract
 from contracts import EngineNotAvailableError
 from pkpm_diagnostics import (
     find_pdb_version_mismatch,
@@ -226,6 +228,20 @@ def _max_from_list(values: list[float]) -> float:
     return max(values) if values else 0.0
 
 
+def _finite_result_float(value: Any, label: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(f"PKPM result {label} is not numeric") from error
+    if not math.isfinite(number):
+        raise RuntimeError(f"PKPM result {label} is not finite")
+    return number
+
+
+def _signed_max_abs(current: float, candidate: float) -> float:
+    return candidate if abs(candidate) > abs(current) else current
+
+
 def _has_core_pkpm_results(extracted: Dict[str, Any]) -> bool:
     if not extracted:
         return False
@@ -361,22 +377,26 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                 if force_data:
                     for case_name, inner in force_data.items():
                         for _pos, vals in inner.items():
-                            if len(vals) >= 3:
-                                beam_max_v = max(beam_max_v, abs(vals[2]))  # Vz
-                            if len(vals) >= 5:
-                                beam_max_m = max(beam_max_m, abs(vals[4]))  # My
+                            if len(vals) < 6:
+                                raise RuntimeError(
+                                    f"PKPM beam {pmid} case '{case_name}' returned fewer than six local-force components"
+                                )
+                            components = [
+                                _finite_result_float(value, f"beam {pmid} force[{index}]")
+                                for index, value in enumerate(vals[:6])
+                            ]
+                            beam_max_v = max(beam_max_v, abs(components[2]))  # Vz
+                            beam_max_m = max(beam_max_m, abs(components[4]))  # My
                             # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
                             beam_key = (pmid, floor_idx)
                             case_beam_forces.setdefault(case_name, {}).setdefault(
                                 beam_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
                             )
                             entry = case_beam_forces[case_name][beam_key]
-                            if len(vals) >= 1: entry["N"] = max(entry["N"], abs(vals[0]))
-                            if len(vals) >= 2: entry["Vy"] = max(entry["Vy"], abs(vals[1]))
-                            if len(vals) >= 3: entry["Vz"] = max(entry["Vz"], abs(vals[2]))
-                            if len(vals) >= 4: entry["T"] = max(entry["T"], abs(vals[3]))
-                            if len(vals) >= 5: entry["My"] = max(entry["My"], abs(vals[4]))
-                            if len(vals) >= 6: entry["Mz"] = max(entry["Mz"], abs(vals[5]))
+                            for component, value in zip(
+                                ("N", "Vy", "Vz", "T", "My", "Mz"), components
+                            ):
+                                entry[component] = _signed_max_abs(entry[component], value)
 
                 # Fallback: use design summary methods
                 shear = _safe_float(b.GetShearingforce())
@@ -415,24 +435,31 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                 if force_data:
                     for case_name, inner in force_data.items():
                         for _pos, vals in inner.items():
-                            if len(vals) >= 1:
-                                col_max_n = max(col_max_n, abs(vals[0]))  # N
-                            if len(vals) >= 3:
-                                col_max_v = max(col_max_v, (vals[1]**2 + vals[2]**2)**0.5)  # sqrt(Vy²+Vz²)
-                            if len(vals) >= 6:
-                                col_max_m = max(col_max_m, (vals[4]**2 + vals[5]**2)**0.5)  # sqrt(My²+Mz²)
+                            if len(vals) < 6:
+                                raise RuntimeError(
+                                    f"PKPM column {pmid} case '{case_name}' returned fewer than six local-force components"
+                                )
+                            components = [
+                                _finite_result_float(value, f"column {pmid} force[{index}]")
+                                for index, value in enumerate(vals[:6])
+                            ]
+                            col_max_n = max(col_max_n, abs(components[0]))  # N
+                            col_max_v = max(
+                                col_max_v, (components[1] ** 2 + components[2] ** 2) ** 0.5
+                            )
+                            col_max_m = max(
+                                col_max_m, (components[4] ** 2 + components[5] ** 2) ** 0.5
+                            )
                             # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
                             col_key = (pmid, floor_idx)
                             case_col_forces.setdefault(case_name, {}).setdefault(
                                 col_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
                             )
                             entry = case_col_forces[case_name][col_key]
-                            if len(vals) >= 1: entry["N"] = max(entry["N"], abs(vals[0]))
-                            if len(vals) >= 2: entry["Vy"] = max(entry["Vy"], abs(vals[1]))
-                            if len(vals) >= 3: entry["Vz"] = max(entry["Vz"], abs(vals[2]))
-                            if len(vals) >= 4: entry["T"] = max(entry["T"], abs(vals[3]))
-                            if len(vals) >= 5: entry["My"] = max(entry["My"], abs(vals[4]))
-                            if len(vals) >= 6: entry["Mz"] = max(entry["Mz"], abs(vals[5]))
+                            for component, value in zip(
+                                ("N", "Vy", "Vz", "T", "My", "Mz"), components
+                            ):
+                                entry[component] = _signed_max_abs(entry[component], value)
 
                 column_results.append({
                     "floor": floor_idx,
@@ -455,16 +482,15 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                 best_mag = 0.0
                 best_dx = best_dy = best_dz = 0.0
                 for case_name, nd in disp_dict.items():
-                    vx = _safe_float(nd.GetDispX())
-                    vy = _safe_float(nd.GetDispY())
-                    vz = _safe_float(nd.GetDispZ())
+                    vx = _finite_result_float(nd.GetDispX(), "node displacement X")
+                    vy = _finite_result_float(nd.GetDispY(), "node displacement Y")
+                    vz = _finite_result_float(nd.GetDispZ(), "node displacement Z")
                     if abs(vx) >= _SENTINEL or abs(vy) >= _SENTINEL or abs(vz) >= _SENTINEL:
                         continue
                     pmid = node.GetPmID()
                     node_key = (pmid, node.GetFloorNo())
                     case_node_disps.setdefault(case_name, {})[node_key] = {
                         "ux": vx, "uy": vy, "uz": vz,
-                        "rx": 0.0, "ry": 0.0, "rz": 0.0,
                     }
                     mag = (vx ** 2 + vy ** 2 + vz ** 2) ** 0.5
                     if mag > best_mag:
@@ -485,8 +511,8 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                         "max_disp_y_mm": round(dy, 4),
                         "max_disp_z_mm": round(dz, 4),
                     })
-        except Exception:
-            pass
+        except Exception as error:
+            raise RuntimeError(f"Failed to extract PKPM nodal translations: {error}") from error
 
         max_displacement = max(
             max(all_node_disp_x, default=0.0),
@@ -586,6 +612,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     RuntimeError
         When JWS generation or SATWE analysis fails.
     """
+    validate_coordinate_contract(model)
     cycle_path = _check_pkpm_available()
     _import_apipyinterface()
 
@@ -636,8 +663,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 f"{format_pdb_version_mismatch_error(work_dir, cycle_path, pdb_mismatch)} "
                 f"Result extraction failed: {exc}"
             ) from exc
-        warnings.append(f"Result extraction failed: {exc}")
-        extracted = {}
+        raise RuntimeError(f"PKPM result extraction failed: {exc}") from exc
     pdb_mismatch = find_pdb_version_mismatch(work_dir)
     if pdb_mismatch:
         if not _has_core_pkpm_results(extracted):
@@ -672,40 +698,39 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         h = _safe_float(st.get("height", 0))
         story_tops.append(elev + h)
 
-    # Map each V2 node to a PKPM floor number (1-indexed)
+    # Map each V2 node to one exact PKPM natural floor number (1-indexed).
+    coordinate_tolerance = 1e-6
     v2_node_floor: Dict[str, int] = {}
     for v2_id, z in v2_node_z.items():
-        if abs(z) < 0.001:
+        z_value = _finite_result_float(z, f"input node '{v2_id}' global Z")
+        if abs(z_value) <= coordinate_tolerance:
             v2_node_floor[v2_id] = 0  # base
             continue
-        for i, top_z in enumerate(story_tops):
-            if abs(z - top_z) < 0.1:
-                v2_node_floor[v2_id] = i + 1
-                break
+        matches = [
+            i + 1 for i, top_z in enumerate(story_tops)
+            if abs(z_value - top_z) <= coordinate_tolerance
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"V2 node '{v2_id}' at global Z={z_value} does not map uniquely to a PKPM floor"
+            )
+        v2_node_floor[v2_id] = matches[0]
 
     # Build reverse: (pkpm_pmid, floor) → v2_node_id
     pm_floor_to_v2: Dict[tuple[int, int], str] = {}
     for v2_id, pm_id in v2_to_pm.items():
         floor = v2_node_floor.get(v2_id, -1)
         if floor > 0:
-            pm_floor_to_v2[(pm_id, floor)] = v2_id
+            key = (pm_id, floor)
+            if key in pm_floor_to_v2:
+                raise RuntimeError(
+                    f"PKPM node mapping collision for plan node {pm_id} on floor {floor}"
+                )
+            pm_floor_to_v2[key] = v2_id
 
-    # displacements: { nodeId: { ux, uy, uz, rx, ry, rz } }
+    # Populated from signed per-case translations below.  Aggregate PKPM
+    # displacement summaries contain absolute values and are not vectors.
     displacements: Dict[str, Dict[str, float]] = {}
-    for nd in node_disps:
-        pmid = nd.get("pmid", -1)
-        floor = nd.get("floor", 0)
-        # Only include displacement when V2 node mapping succeeds
-        v2_id = pm_floor_to_v2.get((pmid, floor))
-        if v2_id:
-            displacements[v2_id] = {
-                "ux": nd.get("max_disp_x_mm", 0.0),
-                "uy": nd.get("max_disp_y_mm", 0.0),
-                "uz": nd.get("max_disp_z_mm", 0.0),
-                "rx": 0.0,
-                "ry": 0.0,
-                "rz": 0.0,
-            }
 
     # Build (pmid, floor) → V2 element ID mapping
     # PKPM same pmid repeats on every floor; tuple key disambiguates.
@@ -723,81 +748,22 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         end_floor = v2_node_floor.get(node_ids[-1], 0) if node_ids else 0
         pkpm_floor = max(start_floor, end_floor)
         if pkpm_floor > 0:
-            pm_floor_elem_to_v2[(pmid, pkpm_floor)] = v2_eid
-
-    # Supplement mapping from PKPM design data (beams/columns carry pmid + floor)
-    if len(pm_floor_elem_to_v2) < len(elem_map_raw):
-        # Build pmid → [v2_eid, ...] index for fast lookup
-        pmid_to_v2: Dict[int, list[str]] = {}
-        for v2_eid, info in elem_map_raw.items():
-            pmid_to_v2.setdefault(info["pmid"], []).append(v2_eid)
-        for item in beams + columns:
-            item_pmid = item.get("pmid", -1)
-            item_floor = item.get("floor", 0)
-            if item_pmid < 0 or item_floor <= 0:
-                continue
-            key = (item_pmid, item_floor)
-            if key not in pm_floor_elem_to_v2:
-                for candidate in pmid_to_v2.get(item_pmid, []):
-                    c_data = v2_elem_by_id.get(candidate)
-                    if not c_data:
-                        continue
-                    c_nodes = c_data.get("nodes", [])
-                    c_floor = max(
-                        (v2_node_floor.get(n, 0) for n in c_nodes), default=0
-                    )
-                    if c_floor == item_floor:
-                        pm_floor_elem_to_v2[key] = candidate
-                        break
-
-    # Fallback: if extracted pmids don't overlap with converter pmids,
-    # PKPM renumbered elements after analysis. Match by floor+type+sequential order.
-    _ext_pmids = {item.get("pmid") for item in beams + columns if item.get("pmid")}
-    _map_pmids = {info["pmid"] for info in elem_map_raw.values()}
-    if len(_ext_pmids & _map_pmids) == 0 and (beams or columns):
-        from collections import defaultdict
-        # Group ALL elem_map entries by (floor, type)
-        elem_by_floor_type: Dict[tuple[int, str], list[str]] = defaultdict(list)
-        for v2_eid, info in elem_map_raw.items():
-            elem_data = v2_elem_by_id.get(v2_eid)
-            if not elem_data:
-                continue
-            node_ids = elem_data.get("nodes", [])
-            start_floor = v2_node_floor.get(node_ids[0], 0) if node_ids else 0
-            end_floor = v2_node_floor.get(node_ids[-1], 0) if node_ids else 0
-            pkpm_floor = max(start_floor, end_floor)
-            etype = info.get("type", "beam")
-            if pkpm_floor > 0:
-                elem_by_floor_type[(pkpm_floor, etype)].append(v2_eid)
-        for k in elem_by_floor_type:
-            elem_by_floor_type[k].sort()
-
-        # Group extracted elements by (floor, type) sorted by pmid
-        ext_by_floor_type: Dict[tuple[int, str], list[dict]] = defaultdict(list)
-        for item in beams:
-            ext_by_floor_type[(item.get("floor", 0), "beam")].append(item)
-        for item in columns:
-            ext_by_floor_type[(item.get("floor", 0), "col")].append(item)
-        for k in ext_by_floor_type:
-            ext_by_floor_type[k].sort(key=lambda x: x.get("pmid", 0))
-
-        # Zip: nth extracted element on (floor, type) → nth elem_map entry
-        floor_type_matched = 0
-        for ft_key, ext_items in ext_by_floor_type.items():
-            map_entries = elem_by_floor_type.get(ft_key, [])
-            for i, item in enumerate(ext_items):
-                if i < len(map_entries):
-                    ext_pmid = item.get("pmid", -1)
-                    ext_floor = item.get("floor", 0)
-                    if ext_pmid > 0 and ext_floor > 0:
-                        new_key = (ext_pmid, ext_floor)
-                        if new_key not in pm_floor_elem_to_v2:
-                            pm_floor_elem_to_v2[new_key] = map_entries[i]
-                            floor_type_matched += 1
-        if floor_type_matched > 0:
-            logger.info(
-                "Floor+type sequential matching: %d elements mapped", floor_type_matched,
-            )
+            key = (pmid, pkpm_floor)
+            if key in pm_floor_elem_to_v2:
+                raise RuntimeError(
+                    f"PKPM element mapping collision for member {pmid} on floor {pkpm_floor}"
+                )
+            pm_floor_elem_to_v2[key] = v2_eid
+    if len(pm_floor_elem_to_v2) != len(elem_map_raw):
+        raise RuntimeError("PKPM converter did not produce an exact result mapping for every V2 element")
+    for displacement in node_disps:
+        key = (displacement.get("pmid"), displacement.get("floor"))
+        if key not in pm_floor_to_v2:
+            raise RuntimeError(f"PKPM displacement summary {key} cannot be mapped to a V2 node")
+    for member in beams + columns:
+        key = (member.get("pmid"), member.get("floor"))
+        if key not in pm_floor_elem_to_v2:
+            raise RuntimeError(f"PKPM design result {key} cannot be mapped to a V2 element")
 
     # forces: { elementId: { N, V, M, Vy, Vz, My, Mz, T } }
     forces: Dict[str, Dict[str, float]] = {}
@@ -811,13 +777,14 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                     elem_max_forces[key] = {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
                 entry = elem_max_forces[key]
                 for comp in ("N", "Vy", "Vz", "T", "My", "Mz"):
-                    entry[comp] = max(entry[comp], f.get(comp, 0.0))
+                    value = _finite_result_float(f.get(comp), f"{key} {comp}")
+                    entry[comp] = _signed_max_abs(entry[comp], value)
 
     for key, f in elem_max_forces.items():
         v2_eid = pm_floor_elem_to_v2.get(key)
-        elem_id = v2_eid if v2_eid else str(key[0])
-        if not elem_id or elem_id == str(-1):
-            continue
+        if v2_eid is None:
+            raise RuntimeError(f"PKPM force result {key} cannot be mapped to a V2 element")
+        elem_id = v2_eid
         forces[elem_id] = {
             "N": f["N"],
             "V": (f["Vy"]**2 + f["Vz"]**2)**0.5,
@@ -827,6 +794,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "My": f["My"],
             "Mz": f["Mz"],
             "T": f["T"],
+            "referenceFrame": "element-local",
         }
 
     logger.debug(
@@ -860,26 +828,45 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         case_disps: Dict[str, Dict[str, float]] = {}
         for key, disp in case_node_disps.get(case_name, {}).items():
             v2_id = pm_floor_to_v2.get(key)
-            if v2_id:
-                case_disps[v2_id] = disp
-            else:
-                case_disps[str(key[0])] = disp
+            if v2_id is None:
+                raise RuntimeError(f"PKPM case displacement {key} cannot be mapped to a V2 node")
+            normalized_disp = {
+                "ux": _finite_result_float(disp.get("ux"), f"{key} ux") / 1000.0,
+                "uy": _finite_result_float(disp.get("uy"), f"{key} uy") / 1000.0,
+                "uz": _finite_result_float(disp.get("uz"), f"{key} uz") / 1000.0,
+            }
+            case_disps[v2_id] = normalized_disp
+            previous = displacements.get(v2_id)
+            previous_magnitude = (
+                sum(float(previous[axis]) ** 2 for axis in ("ux", "uy", "uz")) ** 0.5
+                if previous else -1.0
+            )
+            magnitude = sum(normalized_disp[axis] ** 2 for axis in ("ux", "uy", "uz")) ** 0.5
+            if magnitude > previous_magnitude:
+                displacements[v2_id] = normalized_disp
 
         # Per-case forces — remap (pmid, floor) → V2 element ID
         case_forces_out: Dict[str, Dict[str, float]] = {}
         for key, force in case_beam_forces.get(case_name, {}).items():
             v2_eid = pm_floor_elem_to_v2.get(key)
-            elem_id = v2_eid if v2_eid else str(key[0])
+            if v2_eid is None:
+                raise RuntimeError(f"PKPM beam force {key} cannot be mapped to a V2 element")
+            elem_id = v2_eid
             case_forces_out[elem_id] = {
                 "N": force["N"],
                 "V": (force["Vy"]**2 + force["Vz"]**2)**0.5,
                 "M": (force["My"]**2 + force["Mz"]**2)**0.5,
                 "Vy": force["Vy"], "Vz": force["Vz"],
                 "My": force["My"], "Mz": force["Mz"], "T": force["T"],
+                "referenceFrame": "element-local",
             }
         for key, force in case_col_forces.get(case_name, {}).items():
             v2_eid = pm_floor_elem_to_v2.get(key)
-            elem_id = v2_eid if v2_eid else str(key[0])
+            if v2_eid is None:
+                raise RuntimeError(f"PKPM column force {key} cannot be mapped to a V2 element")
+            elem_id = v2_eid
+            if elem_id in case_forces_out:
+                raise RuntimeError(f"PKPM element '{elem_id}' was returned as both beam and column")
             existing = case_forces_out.get(elem_id, {})
             case_forces_out[elem_id] = {
                 **existing,
@@ -888,6 +875,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 "M": (force["My"]**2 + force["Mz"]**2)**0.5,
                 "Vy": force["Vy"], "Vz": force["Vz"],
                 "My": force["My"], "Mz": force["Mz"], "T": force["T"],
+                "referenceFrame": "element-local",
             }
 
         case_results[case_name] = {
@@ -905,7 +893,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 str(node_id), {"maxAbsDisplacement": 0.0, "controlCase": ""}
             )
             if mag > item["maxAbsDisplacement"]:
-                item["maxAbsDisplacement"] = round(mag, 4)
+                item["maxAbsDisplacement"] = round(mag, 8)
                 item["controlCase"] = case_name
 
         for elem_id, force in case_forces_out.items():
@@ -929,11 +917,12 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 item["controlCaseMoment"] = case_name
 
     # envelope for max displacement
-    max_disp = pkpm_summary.get("max_displacement_mm", 0.0)
+    max_disp = 0.0
     max_disp_node = ""
     for nid, d in displacements.items():
         mag = (d["ux"] ** 2 + d["uy"] ** 2 + d["uz"] ** 2) ** 0.5
-        if mag > 0 and (not max_disp_node or mag > max_disp):
+        if mag > max_disp:
+            max_disp = mag
             max_disp_node = nid
 
     envelope: Dict[str, Any] = {}
@@ -1017,6 +1006,13 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "nodeReaction": {},
         },
         "warnings": warnings,
+        "meta": {
+            **coordinate_contract_metadata(model),
+            "lengthUnit": "m",
+            "displacementUnit": "m",
+            "forceUnit": "kN",
+            "momentUnit": "kN.m",
+        },
     }
 
     return result_dict

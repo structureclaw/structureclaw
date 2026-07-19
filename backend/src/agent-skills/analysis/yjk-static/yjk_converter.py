@@ -39,11 +39,39 @@ from __future__ import annotations
 
 import os
 import json
+import math
 from typing import Any
 
 from YJKAPI import DataFunc, Hi_AddToAndReadYjk
 
 M_TO_MM = 1000.0
+CANONICAL_DOF_ORDER = ["ux", "uy", "uz", "rx", "ry", "rz"]
+
+
+def _require_canonical_3d_coordinate_contract(data: dict[str, Any]) -> dict[str, Any]:
+    coordinate_system = data.get("coordinate_system")
+    if not isinstance(coordinate_system, dict):
+        raise ValueError("YJK conversion requires the typed coordinate_system contract")
+    if (
+        coordinate_system.get("semantics") != "global-z-up"
+        or coordinate_system.get("version") != 1
+        or coordinate_system.get("dimension") != "3d"
+        or coordinate_system.get("plane") is not None
+        or coordinate_system.get("dof_order") != CANONICAL_DOF_ORDER
+    ):
+        raise ValueError("YJK conversion requires the complete canonical global-z-up 3-D coordinate contract")
+    return coordinate_system
+
+
+def _metres_to_exact_mm(value: Any, label: str) -> int:
+    try:
+        millimetres = float(value) * M_TO_MM
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be a finite value in metres") from error
+    rounded = round(millimetres)
+    if not math.isfinite(millimetres) or abs(millimetres - rounded) > 1e-6:
+        raise ValueError(f"{label} is not exactly representable in integer millimetres")
+    return int(rounded)
 
 # material category -> YJK mat type
 _CATEGORY_TO_MAT: dict[str, int] = {
@@ -97,8 +125,8 @@ _TYPE_TO_KIND: dict[str, int] = {
 
 def _get_floor_loads(story: dict) -> tuple[float, float]:
     """Extract dead and live load values from a V2 story dict."""
-    dead = 5.0
-    live = 2.0
+    dead = 0.0
+    live = 0.0
     for fl in story.get("floor_loads", []):
         if fl.get("type") == "dead":
             dead = float(fl["value"])
@@ -113,10 +141,12 @@ def _infer_section_roles(data: dict) -> dict[str, str]:
     for elem in data.get("elements", []):
         sec_id = elem.get("section", "")
         etype = elem.get("type", "beam")
-        if etype == "column" and roles.get(sec_id) != "column":
-            roles[sec_id] = "column"
-        elif sec_id not in roles:
-            roles[sec_id] = "beam"
+        if etype not in {"beam", "column"}:
+            raise ValueError(f"YJK grid conversion does not support element type '{etype}'")
+        prior = roles.get(sec_id)
+        if prior is not None and prior != etype:
+            raise ValueError(f"Section '{sec_id}' is shared by beams and columns and cannot be preserved")
+        roles[sec_id] = etype
     return roles
 
 
@@ -131,10 +161,29 @@ def _resolve_mat_type(sec: dict, data: dict) -> int:
         if elem.get("section") == sec["id"]:
             mat = mat_map.get(elem.get("material", ""))
             if mat:
-                cat = mat.get("category", "steel")
-                return _CATEGORY_TO_MAT.get(cat, 6)
+                cat = mat.get("category")
+                if cat not in _CATEGORY_TO_MAT:
+                    raise ValueError(
+                        f"Material '{mat.get('id')}' must declare a supported category for YJK conversion"
+                    )
+                return _CATEGORY_TO_MAT[cat]
             break
-    return 5
+    raise ValueError(f"Section '{sec.get('id')}' is not referenced by a material-backed element")
+
+
+def _positive_dimension(value: Any, label: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be a finite positive dimension in millimetres") from error
+    if not math.isfinite(number) or number <= 0.0:
+        raise ValueError(f"{label} must be a finite positive dimension in millimetres")
+    return number
+
+
+def _dimension_text(value: Any, label: str) -> str:
+    number = _positive_dimension(value, label)
+    return str(int(number)) if number.is_integer() else format(number, ".12g")
 
 
 # --- Precise H-section lookup table (GB/T 11263 hot-rolled H-beams) ---
@@ -192,8 +241,6 @@ def _build_shape_val(sec: dict, kind: int) -> tuple[int, str, str]:
       kind=8  圆管:     "D,d" (外径,内径)
       kind=26 型钢库:   ShapeVal="", name=规格名
     """
-    import re
-
     props = sec.get("properties", {})
     extra = sec.get("extra", {})
 
@@ -212,24 +259,8 @@ def _build_shape_val(sec: dict, kind: int) -> tuple[int, str, str]:
             H, B, tw, tf = dims
             return 2, f"{tw},{H},{B},{tf},{B},{tf}", ""
 
-        # Try regex parse for names not in the table
-        hw_match = re.match(r"^(HW|HN|HM|HP|HT)(\d+)[Xx\u00d7](\d+)", std_name, re.IGNORECASE)
-        if hw_match:
-            prefix = hw_match.group(1).upper()
-            H = int(hw_match.group(2))
-            B = int(hw_match.group(3))
-            if prefix == "HW":
-                tw = max(8, H // 30)
-                tf = max(12, H // 20)
-            elif prefix == "HN":
-                tw = max(6, H // 40)
-                tf = max(9, H // 30)
-            else:
-                tw = max(7, H // 35)
-                tf = max(11, H // 25)
-            return 2, f"{tw},{H},{B},{tf},{B},{tf}", ""
-
-        # Unrecognized standard name -> try kind=26 library lookup
+        # Unknown standard names must be resolved by YJK's own catalogue;
+        # dimensions must never be approximated from the designation.
         return 26, "", str(std_name)
 
     # PKPM-style shape dict
@@ -238,62 +269,82 @@ def _build_shape_val(sec: dict, kind: int) -> tuple[int, str, str]:
         sk = str(shape.get("kind", ""))
         sk_lower = sk.lower()
         if sk_lower in ("rectangular", "rectangle", "rect") or kind == 1:
-            H = shape.get("H", shape.get("height", sec.get("height", 600)))
-            B = shape.get("B", shape.get("width", sec.get("width", 400)))
-            return 1, f"{int(B)},{int(H)}", sec.get("name", "")
+            H = shape.get("H", shape.get("height", sec.get("height")))
+            B = shape.get("B", shape.get("width", sec.get("width")))
+            return 1, f"{_dimension_text(B, 'Rectangle B')},{_dimension_text(H, 'Rectangle H')}", sec.get("name", "")
         if sk in ("H", "I") or kind == 2:
-            tw = shape.get("tw", 10)
-            H = shape.get("H", sec.get("height", 400))
-            B1 = shape.get("B1", shape.get("B", sec.get("width", 200)))
-            tf1 = shape.get("tf1", shape.get("tf", 14))
+            tw = shape.get("tw")
+            H = shape.get("H", sec.get("height"))
+            B1 = shape.get("B1", shape.get("B", sec.get("width")))
+            tf1 = shape.get("tf1", shape.get("tf"))
             B2 = shape.get("B2", B1)
             tf2 = shape.get("tf2", tf1)
-            return 2, f"{int(tw)},{int(H)},{int(B1)},{int(tf1)},{int(B2)},{int(tf2)}", ""
+            values = (tw, H, B1, tf1, B2, tf2)
+            labels = ("I tw", "I H", "I B1", "I tf1", "I B2", "I tf2")
+            return 2, ",".join(_dimension_text(value, label) for value, label in zip(values, labels)), ""
         if sk == "Box" or kind == 7:
             # kind=7 箱型: ShapeVal "B,H,U,T,D,F" (等厚时后四项相同)
-            H = shape.get("H", sec.get("height", 400))
-            B = shape.get("B", sec.get("width", 400))
-            t = shape.get("T", shape.get("t", 20))
+            H = shape.get("H", sec.get("height"))
+            B = shape.get("B", sec.get("width"))
+            t = shape.get("T", shape.get("t"))
             U = shape.get("U", t)
             T_val = shape.get("T_bottom", t)
             D = shape.get("D", t)
             F = shape.get("F", t)
-            return 7, f"{int(B)},{int(H)},{int(U)},{int(T_val)},{int(D)},{int(F)}", ""
+            values = (B, H, U, T_val, D, F)
+            labels = ("Box B", "Box H", "Box U", "Box T", "Box D", "Box F")
+            return 7, ",".join(_dimension_text(value, label) for value, label in zip(values, labels)), ""
         if sk == "Tube" or kind == 8:
-            D = shape.get("D", 200)
-            d = shape.get("d", D - 20)
-            return 8, f"{int(D)},{int(d)}", ""
+            D = _positive_dimension(shape.get("D"), "Tube outer D")
+            inner = shape.get("d")
+            if inner is None and shape.get("t") is not None:
+                inner = D - 2.0 * _positive_dimension(shape.get("t"), "Tube thickness t")
+            d = _positive_dimension(inner, "Tube inner d")
+            if d >= D:
+                raise ValueError("Tube inner diameter must be smaller than outer diameter")
+            return 8, f"{_dimension_text(D, 'Tube outer D')},{_dimension_text(d, 'Tube inner d')}", ""
 
     # --- Build ShapeVal from properties by kind ---
     if kind == 2:
-        tw = props.get("tw", 10)
-        H = props.get("H", sec.get("height", 400))
-        B1 = props.get("B1", props.get("B", sec.get("width", 200)))
-        tf1 = props.get("tf1", props.get("tf", 14))
+        tw = props.get("tw")
+        H = props.get("H", sec.get("height"))
+        B1 = props.get("B1", props.get("B", sec.get("width")))
+        tf1 = props.get("tf1", props.get("tf"))
         B2 = props.get("B2", B1)
         tf2 = props.get("tf2", tf1)
-        return 2, f"{int(tw)},{int(H)},{int(B1)},{int(tf1)},{int(B2)},{int(tf2)}", ""
+        values = (tw, H, B1, tf1, B2, tf2)
+        labels = ("I tw", "I H", "I B1", "I tf1", "I B2", "I tf2")
+        return 2, ",".join(_dimension_text(value, label) for value, label in zip(values, labels)), ""
 
     if kind == 7:
         # 箱型: "B,H,U,T,D,F"
-        H = props.get("H", sec.get("height", 400))
-        B = props.get("B", sec.get("width", 400))
-        t = props.get("t", props.get("T", 20))
-        return 7, f"{int(B)},{int(H)},{int(t)},{int(t)},{int(t)},{int(t)}", ""
+        H = props.get("H", sec.get("height"))
+        B = props.get("B", sec.get("width"))
+        t = props.get("t", props.get("T"))
+        return 7, ",".join((
+            _dimension_text(B, "Box B"),
+            _dimension_text(H, "Box H"),
+            *[_dimension_text(t, "Box thickness") for _ in range(4)],
+        )), ""
 
     if kind == 8:
-        D = props.get("D", sec.get("diameter", 200))
-        d = props.get("d", D - 20 if D else 180)
-        return 8, f"{int(D)},{int(d)}", ""
+        D = _positive_dimension(props.get("D", sec.get("diameter")), "Tube outer D")
+        inner = props.get("d")
+        if inner is None and props.get("t") is not None:
+            inner = D - 2.0 * _positive_dimension(props.get("t"), "Tube thickness t")
+        d = _positive_dimension(inner, "Tube inner d")
+        if d >= D:
+            raise ValueError("Tube inner diameter must be smaller than outer diameter")
+        return 8, f"{_dimension_text(D, 'Tube outer D')},{_dimension_text(d, 'Tube inner d')}", ""
 
     if kind == 3:
-        D = sec.get("diameter") or props.get("D", 400)
-        return 3, f"{int(D)}", ""
+        D = sec.get("diameter") or props.get("D")
+        return 3, _dimension_text(D, "Circle D"), ""
 
-    # Fallback: rectangular (kind=1) "B,H"
-    w = sec.get("width") or props.get("B", 400)
-    h = sec.get("height") or props.get("H", 600)
-    return 1, f"{int(w)},{int(h)}", sec.get("name", "")
+    # Legacy rectangular sections are accepted only with explicit dimensions.
+    w = sec.get("width") or props.get("B")
+    h = sec.get("height") or props.get("H")
+    return 1, f"{_dimension_text(w, 'Rectangle B')},{_dimension_text(h, 'Rectangle H')}", sec.get("name", "")
 
 
 def _extract_grid_spans(nodes: list[dict]) -> tuple[list[int], list[int]]:
@@ -313,32 +364,23 @@ def _extract_grid_spans(nodes: list[dict]) -> tuple[list[int], list[int]]:
 
 def _extract_grid_axes(nodes: list[dict]) -> tuple[list[int], list[int]]:
     """Derive sorted YJK grid axes in mm from V2 node coordinates."""
-    xs: set[float] = set()
-    ys: set[float] = set()
+    xs: set[int] = set()
+    ys: set[int] = set()
     for n in nodes:
-        xs.add(round(float(n["x"]) * M_TO_MM, 1))
-        ys.add(round(float(n["y"]) * M_TO_MM, 1))
+        node_id = str(n.get("id"))
+        xs.add(_metres_to_exact_mm(n["x"], f"Node '{node_id}' global X"))
+        ys.add(_metres_to_exact_mm(n["y"], f"Node '{node_id}' global Y"))
 
     sorted_x = sorted(xs)
     sorted_y = sorted(ys)
 
     if len(sorted_x) < 2 or len(sorted_y) < 2:
-        # 2D frame models may have only 1 unique coordinate on one axis
-        # after V1→V2 remap (XZ plane → Y=0, YZ plane → X=0).
-        # Synthesize a nominal span so YJK can proceed.
-        if len(sorted_x) >= 2 and len(sorted_y) < 2:
-            nominal_y = sorted_y[0] if sorted_y else 0
-            sorted_y = [nominal_y, nominal_y + 1000]
-        elif len(sorted_y) >= 2 and len(sorted_x) < 2:
-            nominal_x = sorted_x[0] if sorted_x else 0
-            sorted_x = [nominal_x, nominal_x + 1000]
-        else:
-            raise ValueError(
-                f"Need at least 2 unique coordinates in at least one plan direction (X or Y) "
-                f"to form a grid. Got {len(sorted_x)} X and {len(sorted_y)} Y."
-            )
+        raise ValueError(
+            "YJK conversion requires a genuine 3-D plan grid with at least two X and two Y coordinates; "
+            f"got {len(sorted_x)} X and {len(sorted_y)} Y"
+        )
 
-    return [int(round(x)) for x in sorted_x], [int(round(y)) for y in sorted_y]
+    return sorted_x, sorted_y
 
 
 def _json_safe(value: Any) -> Any:
@@ -538,9 +580,9 @@ def _build_story_infos(stories: list[dict]) -> list[dict[str, Any]]:
             "height_m": height,
             "elevation_m": elevation,
             "top_elevation_m": top_elevation,
-            "height_mm": int(round(height * M_TO_MM)),
-            "elevation_mm": int(round(elevation * M_TO_MM)),
-            "top_elevation_mm": int(round(top_elevation * M_TO_MM)),
+            "height_mm": _metres_to_exact_mm(height, f"Story '{story_id}' height"),
+            "elevation_mm": _metres_to_exact_mm(elevation, f"Story '{story_id}' elevation"),
+            "top_elevation_mm": _metres_to_exact_mm(top_elevation, f"Story '{story_id}' top elevation"),
         })
         cumulative_elevation = top_elevation
     return infos
@@ -614,12 +656,12 @@ def _classify_element_geometry(elem: dict, nodes_by_id: dict[str, dict]) -> str:
     if not n1 or not n2:
         return "unknown"
 
-    x1 = int(round(float(n1.get("x", 0)) * M_TO_MM))
-    y1 = int(round(float(n1.get("y", 0)) * M_TO_MM))
-    z1 = int(round(float(n1.get("z", 0)) * M_TO_MM))
-    x2 = int(round(float(n2.get("x", 0)) * M_TO_MM))
-    y2 = int(round(float(n2.get("y", 0)) * M_TO_MM))
-    z2 = int(round(float(n2.get("z", 0)) * M_TO_MM))
+    x1 = _metres_to_exact_mm(n1.get("x"), f"Element '{elem.get('id')}' node 1 X")
+    y1 = _metres_to_exact_mm(n1.get("y"), f"Element '{elem.get('id')}' node 1 Y")
+    z1 = _metres_to_exact_mm(n1.get("z"), f"Element '{elem.get('id')}' node 1 Z")
+    x2 = _metres_to_exact_mm(n2.get("x"), f"Element '{elem.get('id')}' node 2 X")
+    y2 = _metres_to_exact_mm(n2.get("y"), f"Element '{elem.get('id')}' node 2 Y")
+    z2 = _metres_to_exact_mm(n2.get("z"), f"Element '{elem.get('id')}' node 2 Z")
 
     if x1 == x2 and y1 == y2 and z1 != z2:
         return "vertical"
@@ -746,9 +788,9 @@ def _build_mapping(
     node_mappings: dict[str, dict[str, Any]] = {}
     for node in nodes:
         node_id = str(node.get("id"))
-        x_mm = int(round(float(node.get("x", 0)) * M_TO_MM))
-        y_mm = int(round(float(node.get("y", 0)) * M_TO_MM))
-        z_mm = int(round(float(node.get("z", 0)) * M_TO_MM))
+        x_mm = _metres_to_exact_mm(node.get("x"), f"Node '{node_id}' global X")
+        y_mm = _metres_to_exact_mm(node.get("y"), f"Node '{node_id}' global Y")
+        z_mm = _metres_to_exact_mm(node.get("z"), f"Node '{node_id}' global Z")
         floor_info = _infer_node_floor(node, story_infos)
         plan_key = _plan_key(x_mm, y_mm)
         node_mappings[node_id] = {
@@ -846,6 +888,12 @@ def _build_mapping(
         "schema_version": "1.0.0",
         "engine": "yjk-static",
         "ydb_path": ydb_path,
+        "coordinate_contract": {
+            **data["coordinate_system"],
+            "coordinate_transform": "identity",
+            "source_length_unit": "m",
+            "target_length_unit": "mm",
+        },
         "source": {
             "schema_version": data.get("schema_version"),
             "node_count": len(nodes),
@@ -902,6 +950,7 @@ def convert_v2_to_ydb(
 
     os.makedirs(work_dir, exist_ok=True)
     warnings: list[str] = []
+    _require_canonical_3d_coordinate_contract(data)
 
     stories = sorted(
         data.get("stories", []),
@@ -912,7 +961,7 @@ def convert_v2_to_ydb(
     story_infos = _build_story_infos(stories)
 
     first_story = stories[0]
-    height_mm = int(round(float(first_story["height"]) * M_TO_MM))
+    height_mm = _metres_to_exact_mm(first_story["height"], f"Story '{first_story.get('id')}' height")
     dead, live = _get_floor_loads(first_story)
     _log(f"Story height: {height_mm}mm, dead={dead}, live={live}")
 
@@ -929,7 +978,9 @@ def convert_v2_to_ydb(
 
     for sec in data.get("sections", []):
         sec_id = sec["id"]
-        role = section_roles.get(sec_id, "beam")
+        role = section_roles.get(sec_id)
+        if role is None:
+            continue
 
         sec_type_str = sec.get("type", "rectangular")
         kind = _TYPE_TO_KIND.get(sec_type_str, 1)
@@ -966,37 +1017,9 @@ def convert_v2_to_ydb(
             section_defs[sec_id]["error"] = str(exc)
 
     if not col_defs:
-        _log("WARNING: No column sections defined; using fallback")
-        # mat=5 (steel), kind=2 (H-section), ShapeVal: tw=20,H=650,B=400,tf1=28,B2=400,tf2=28
-        col_defs["_fallback_col"] = data_func.ColSect_Def(5, 2, "20,650,400,28,400,28", "Fallback Column")
-        section_defs["_fallback_col"] = {
-            "id": "_fallback_col",
-            "role": "column",
-            "type": "H",
-            "yjk_mat_type": 5,
-            "yjk_kind": 2,
-            "shape_val": "20,650,400,28,400,28",
-            "name": "Fallback Column",
-            "yjk_section_id": _extract_yjk_id(col_defs["_fallback_col"]),
-            "yjk_section_ref": _json_safe(col_defs["_fallback_col"]),
-        }
-        warnings.append("No column sections defined; using default steel I-section")
+        raise ValueError("YJK conversion could not define the model's column section; no fallback section is permitted")
     if not beam_defs:
-        _log("WARNING: No beam sections defined; using fallback")
-        # mat=5 (steel), kind=2 (H-section), ShapeVal: tw=18,H=900,B=300,tf1=26,B2=300,tf2=26
-        beam_defs["_fallback_beam"] = data_func.BeamSect_Def(5, 2, "18,900,300,26,300,26", "Fallback Beam")
-        section_defs["_fallback_beam"] = {
-            "id": "_fallback_beam",
-            "role": "beam",
-            "type": "H",
-            "yjk_mat_type": 5,
-            "yjk_kind": 2,
-            "shape_val": "18,900,300,26,300,26",
-            "name": "Fallback Beam",
-            "yjk_section_id": _extract_yjk_id(beam_defs["_fallback_beam"]),
-            "yjk_section_ref": _json_safe(beam_defs["_fallback_beam"]),
-        }
-        warnings.append("No beam sections defined; using default steel I-section")
+        raise ValueError("YJK conversion could not define the model's beam section; no fallback section is permitted")
 
     nodes = data.get("nodes", [])
     if not nodes:
@@ -1054,7 +1077,7 @@ def convert_v2_to_ydb(
     group_start = 0
     while group_start < len(stories):
         ref = stories[group_start]
-        ref_h = int(round(float(ref.get("height", first_story["height"])) * M_TO_MM))
+        ref_h = _metres_to_exact_mm(ref.get("height", first_story["height"]), f"Story '{ref.get('id')}' height")
         if ref_h <= 0:
             ref_h = height_mm
         ref_dead, ref_live = _get_floor_loads(ref)
@@ -1063,7 +1086,7 @@ def convert_v2_to_ydb(
         group_count = 1
         for j in range(group_start + 1, len(stories)):
             s = stories[j]
-            s_h = int(round(float(s.get("height", first_story["height"])) * M_TO_MM))
+            s_h = _metres_to_exact_mm(s.get("height", first_story["height"]), f"Story '{s.get('id')}' height")
             if s_h <= 0:
                 s_h = height_mm
             s_dead, s_live = _get_floor_loads(s)

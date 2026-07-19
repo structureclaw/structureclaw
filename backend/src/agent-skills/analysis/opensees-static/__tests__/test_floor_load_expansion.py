@@ -16,6 +16,16 @@ from opensees_static_simplified_static_analysis import StaticAnalyzer  # noqa: E
 from structure_protocol.structure_model_v2 import StructureModelV2  # noqa: E402
 
 
+def _coordinate_system(dimension: str) -> dict:
+    return {
+        "semantics": "global-z-up",
+        "version": 1,
+        "dimension": dimension,
+        "plane": "xz" if dimension == "2d" else None,
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def build_model(
     load_cases=None,
     load_combinations=None,
@@ -27,6 +37,7 @@ def build_model(
     payload = {
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("3d"),
         "stories": [
             {
                 "id": "F1",
@@ -77,6 +88,7 @@ def build_two_story_mixed_support_model() -> StructureModelV2:
     payload = {
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("3d"),
         "stories": [
             {
                 "id": "F1",
@@ -124,6 +136,7 @@ def build_planar_column_beam_frame_model() -> StructureModelV2:
     payload = {
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("2d"),
         "nodes": [
             {"id": "B1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
             {"id": "B2", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
@@ -159,6 +172,7 @@ def build_continuous_beam_floor_model() -> StructureModelV2:
     payload = {
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("3d"),
         "stories": [
             {
                 "id": "F1",
@@ -338,6 +352,7 @@ class FloorLoadExpansionTest(unittest.TestCase):
         self.assertEqual(loads, [{
             "type": "nodal",
             "node": "T1",
+            "reference_frame": "global",
             "fx": 0.0,
             "fy": 0.0,
             "fz": -10.0,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from coordinate_semantics import coordinate_contract_metadata, resolve_model_dimension, validate_coordinate_contract
 from design_basis import build_design_basis
 from design_actions import run_equivalent_lateral_design_actions, run_gravity_design_actions
 from ground_motion import attach_opensees_transient_check, ground_motion_set_checks, parse_ground_motions, run_modal_time_history, select_ground_motions_for_direction
@@ -10,8 +11,6 @@ from ground_motion_catalog import catalog_summary_for_records, resolve_catalog_r
 from method_decision import decide_seismic_method
 from modal import run_modal_analysis
 from nonlinear_time_history import run_elastic_plastic_time_history_estimate
-from opensees_seismic_analysis import OpenSeesSeismicExecutor
-from opensees_shared.tags import OpenSeesTagMapper
 from pushover import run_linear_pushover
 from regularity import assess_regularity
 from response_spectrum import apply_minimum_story_shear_adjustment, run_response_spectrum
@@ -81,17 +80,7 @@ def _direction(parameters: Dict[str, Any], workflow: Dict[str, Any]) -> str:
 
 
 def _model_is_3d(model: StructureModelV2) -> bool:
-    payload = model.model_dump(mode="python") if hasattr(model, "model_dump") else {}
-    nodes = payload.get("nodes")
-    if not isinstance(nodes, list):
-        return False
-    y_values = [
-        optional_number(node.get("y"))
-        for node in nodes
-        if isinstance(node, dict)
-    ]
-    values = [value for value in y_values if value is not None]
-    return bool(values) and (max(values) - min(values)) > 1e-9
+    return resolve_model_dimension(model) == "3d"
 
 
 def _normalize_direction_values(value: Any) -> List[str]:
@@ -125,16 +114,19 @@ def _directions(parameters: Dict[str, Any], workflow: Dict[str, Any], model: Str
         parameters.get("directions"),
         parameters.get("direction"),
     ):
-        requested.extend(_normalize_direction_values(value))
-        if requested:
-            break
+        if value is None or value == "" or value == []:
+            continue
+        normalized = _normalize_direction_values(value)
+        if not normalized:
+            raise ValueError(f"Unsupported seismic direction declaration: {value!r}")
+        requested.extend(normalized)
+        break
 
     is_3d = _model_is_3d(model)
     directions = requested or (["x", "y"] if is_3d else ["x"])
     warnings: List[str] = []
     if not is_3d and "y" in directions:
-        warnings.append("Y-direction seismic analysis was requested, but the model has no Y plan extent; ran X direction only.")
-        directions = ["x" if direction == "y" else direction for direction in directions]
+        raise ValueError("Global Y seismic analysis is inactive for a canonical 2-D X-Z model")
 
     unique: List[str] = []
     for direction in directions:
@@ -205,47 +197,32 @@ def _pushover_parameters(parameters: Dict[str, Any], workflow: Dict[str, Any]) -
     }
 
 
-def _run_pushover_compatibility(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
-    helper = OpenSeesTagMapper(model)
-    executor = OpenSeesSeismicExecutor(helper)
-    try:
-        import openseespy.opensees as ops  # noqa: F401
-    except ImportError as error:
-        raise RuntimeError("Pushover analysis requires OpenSeesPy") from error
-    try:
-        return executor.pushover_analysis(
-            parameters.get("targetDisplacement", 0.5),
-            parameters.get("controlNode"),
-            ops,
-        )
-    except Exception as error:
-        raise RuntimeError(f"Pushover analysis failed: {error}") from error
-
-
 def _run_pushover(model: StructureModelV2, basis: Any, parameters: Dict[str, Any], direction: str) -> Dict[str, Any]:
     try:
         return run_linear_pushover(model, basis, parameters, direction)
     except Exception as error:
-        fallback = _run_pushover_compatibility(model, parameters)
-        return {
-            **fallback,
-            "engineMode": "legacy_pushover_fallback",
-            "warnings": [
-                f"OpenSees linear static pushover wrapper failed; used legacy compatibility executor: {error}"
-            ],
-        }
+        raise RuntimeError(f"OpenSees canonical pushover analysis failed: {error}") from error
 
 
 def _workflow_input_mode(workflow: Dict[str, Any]) -> str:
     return "structured_seismic_workflow" if workflow else "legacy_compatibility_parameters"
 
 
-def _mark_workflow_input_mode(result: Dict[str, Any], mode: str) -> Dict[str, Any]:
+def _mark_workflow_input_mode(result: Dict[str, Any], mode: str, model: StructureModelV2) -> Dict[str, Any]:
+    coordinate_contract = coordinate_contract_metadata(model)
     result["workflowInputMode"] = mode
+    result["meta"] = {
+        **(result.get("meta") if isinstance(result.get("meta"), dict) else {}),
+        **coordinate_contract,
+    }
     for key in ("data", "detailed"):
         value = result.get(key)
         if isinstance(value, dict):
             value["workflowInputMode"] = mode
+            value["meta"] = {
+                **(value.get("meta") if isinstance(value.get("meta"), dict) else {}),
+                **coordinate_contract,
+            }
     return result
 
 
@@ -257,6 +234,7 @@ def _legacy_workflow_warning() -> str:
 
 
 def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    validate_coordinate_contract(model)
     workflow = seismic_workflow_from_parameters(parameters)
     workflow_input_mode = _workflow_input_mode(workflow)
     method_preference = workflow_method_preference(workflow, parameters)
@@ -287,7 +265,7 @@ def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[st
             pushover=pushover_result,
             warnings=warnings,
             workflow=workflow,
-        ), workflow_input_mode)
+        ), workflow_input_mode, model)
 
     record_payloads = [
         *workflow_ground_motion_records(workflow, parameters),
@@ -511,4 +489,4 @@ def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[st
         warnings=warnings,
         direction_results=direction_results,
         workflow=workflow,
-    ), workflow_input_mode)
+    ), workflow_input_mode, model)

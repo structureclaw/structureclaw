@@ -15,6 +15,7 @@ from opensees_runtime import get_opensees_runtime_issue
 from registry import AnalysisEngineRegistry
 from runtime import run_code_check
 from structure_protocol.runtime import convert_structure_model_payload
+from structure_protocol.migrations import migrate_v1_to_v2
 from structure_protocol.structure_model_v2 import (
     ElementV2 as Element,
     MaterialV2 as Material,
@@ -33,6 +34,16 @@ def assert_true(condition, message):
         raise SystemExit(message)
 
 
+def canonical_coordinate_system(dimension="2d"):
+    return {
+        "semantics": "global-z-up",
+        "version": 1,
+        "dimension": dimension,
+        "plane": "xz" if dimension == "2d" else None,
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def validate_opensees_runtime_and_routing():
 
     def run_request(payload, engine_id="builtin-opensees"):
@@ -49,7 +60,8 @@ def validate_opensees_runtime_and_routing():
     issue = get_opensees_runtime_issue()
 
     cantilever = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system(),
         "nodes": [
             {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
             {"id": "2", "x": 5.0, "y": 0.0, "z": 0.0},
@@ -68,12 +80,13 @@ def validate_opensees_runtime_and_routing():
                 "properties": {"A": 0.01, "Iy": 0.0001, "Iz": 0.0001, "J": 0.0001, "G": 79000},
             }
         ],
-        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "3", "fy": -10.0}]}],
+        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "3", "fz": -10.0}]}],
         "load_combinations": [],
     }
 
     simply_supported = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system(),
         "nodes": [
             {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, False, False]},
             {"id": "2", "x": 3.0, "y": 0.0, "z": 0.0},
@@ -92,17 +105,18 @@ def validate_opensees_runtime_and_routing():
                 "properties": {"A": 0.01, "Iy": 0.0001, "Iz": 0.0001, "J": 0.0001, "G": 79000},
             }
         ],
-        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "2", "fy": -20.0}]}],
+        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "2", "fz": -20.0}]}],
         "load_combinations": [],
     }
 
     portal_frame = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system(),
         "nodes": [
             {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
             {"id": "2", "x": 8.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
-            {"id": "3", "x": 0.0, "y": 4.0, "z": 0.0},
-            {"id": "4", "x": 8.0, "y": 4.0, "z": 0.0},
+            {"id": "3", "x": 0.0, "y": 0.0, "z": 4.0},
+            {"id": "4", "x": 8.0, "y": 0.0, "z": 4.0},
         ],
         "elements": [
             {"id": "1", "type": "beam", "nodes": ["1", "3"], "material": "1", "section": "1"},
@@ -118,7 +132,7 @@ def validate_opensees_runtime_and_routing():
                 "properties": {"A": 0.02, "Iy": 0.0002, "Iz": 0.0002, "J": 0.0002, "G": 79000},
             }
         ],
-        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "3", "fy": -5.0}, {"node": "4", "fy": -5.0}]}],
+        "load_cases": [{"id": "LC1", "type": "other", "loads": [{"node": "3", "fz": -5.0}, {"node": "4", "fz": -5.0}]}],
         "load_combinations": [],
     }
 
@@ -131,9 +145,7 @@ def validate_opensees_runtime_and_routing():
         cantilever_result = run_request(cantilever)
         assert_true(cantilever_result["success"] is True, f"Cantilever OpenSees analysis failed: {cantilever_result['message']}")
         assert_true(cantilever_result["data"]["analysisMode"] == "opensees_2d_frame", f"Unexpected cantilever analysisMode: {cantilever_result['data']['analysisMode']}")
-        # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
         assert_true(cantilever_result["data"].get("plane") == "xz", f"Unexpected cantilever plane: {cantilever_result['data'].get('plane')}")
-        # In xz plane, transverse displacement is uz (fy loads map to fz)
         tip_uz = float(cantilever_result["data"]["displacements"]["3"]["uz"])
         assert_true(math.isfinite(tip_uz) and tip_uz < 0.0, f"Cantilever tip displacement invalid: {tip_uz}")
         assert_true("1" in cantilever_result["data"]["reactions"], "Cantilever reactions missing at fixed support")
@@ -142,9 +154,7 @@ def validate_opensees_runtime_and_routing():
         simply_supported_result = run_request(simply_supported)
         assert_true(simply_supported_result["success"] is True, f"Simply-supported OpenSees analysis failed: {simply_supported_result['message']}")
         assert_true(simply_supported_result["data"]["analysisMode"] == "opensees_2d_frame", f"Unexpected simply-supported analysisMode: {simply_supported_result['data']['analysisMode']}")
-        # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
         assert_true(simply_supported_result["data"].get("plane") == "xz", f"Unexpected simply-supported plane: {simply_supported_result['data'].get('plane')}")
-        # In xz plane, transverse displacement is uz (fy loads map to fz)
         midspan_uz = float(simply_supported_result["data"]["displacements"]["2"]["uz"])
         assert_true(math.isfinite(midspan_uz) and midspan_uz < 0.0, f"Simply-supported midspan displacement invalid: {midspan_uz}")
         print("[ok] simply-supported beam solves with builtin-opensees")
@@ -152,8 +162,8 @@ def validate_opensees_runtime_and_routing():
         portal_result = run_request(portal_frame)
         assert_true(portal_result["success"] is True, f"Portal-frame OpenSees analysis failed: {portal_result['message']}")
         assert_true(portal_result["data"]["analysisMode"] == "opensees_2d_frame", f"Unexpected portal-frame analysisMode: {portal_result['data']['analysisMode']}")
-        roof_uy = float(portal_result["data"]["displacements"]["3"]["uy"])
-        assert_true(math.isfinite(roof_uy) and roof_uy < 0.0, f"Portal-frame roof displacement invalid: {roof_uy}")
+        roof_uz = float(portal_result["data"]["displacements"]["3"]["uz"])
+        assert_true(math.isfinite(roof_uz) and roof_uz < 0.0, f"Portal-frame roof displacement invalid: {roof_uz}")
         print("[ok] portal frame solves with builtin-opensees")
     else:
         # Verify unavailable engine surfaces clearly
@@ -188,6 +198,7 @@ def validate_analyze_contract():
 
         model = StructureModelV2(
             schema_version="2.0.0",
+            coordinate_system=canonical_coordinate_system(),
             nodes=[Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True])],
             elements=[],
             materials=[],
@@ -205,6 +216,7 @@ def validate_analyze_contract():
         return
     model = StructureModelV2(
         schema_version="2.0.0",
+        coordinate_system=canonical_coordinate_system(),
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=0, y=0, z=3),
@@ -241,6 +253,7 @@ def validate_analyze_contract():
 
     frame_3d_model = StructureModelV2(
         schema_version="2.0.0",
+        coordinate_system=canonical_coordinate_system("3d"),
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=0, y=3, z=2, restraints=[True, False, False, True, False, False]),
@@ -267,6 +280,7 @@ def validate_analyze_contract():
 
     simplified_planar_beam_model = StructureModelV2(
         schema_version="2.0.0",
+        coordinate_system=canonical_coordinate_system(),
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=5, y=0, z=0),
@@ -278,7 +292,7 @@ def validate_analyze_contract():
         ],
         materials=[Material(id="1", name="steel", E=200000, nu=0.3, rho=7850)],
         sections=[Section(id="1", name="B1", type="beam", properties={"A": 0.01, "Iy": 0.0001, "Iz": 0.0002, "J": 0.00002, "G": 79000})],
-        load_cases=[{"id": "LC1", "type": "other", "loads": [{"node": "3", "fy": -10.0}]}],
+        load_cases=[{"id": "LC1", "type": "other", "loads": [{"node": "3", "fz": -10.0}]}],
         load_combinations=[],
     )
 
@@ -294,11 +308,9 @@ def validate_analyze_contract():
     simplified_data = simplified_planar_result.get("data", {})
     if simplified_data.get("analysisMode") != "opensees_2d_frame":
         raise SystemExit(f"Expected simplified planar beam analysisMode=opensees_2d_frame, got {simplified_data.get('analysisMode')}")
-    # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
     if simplified_data.get("plane") != "xz":
         raise SystemExit(f"Expected simplified planar beam plane=xz, got {simplified_data.get('plane')}")
     tip_disp = simplified_data.get("displacements", {}).get("3", {})
-    # In xz plane, transverse displacement is uz (fy loads map to fz)
     if abs(float(tip_disp.get("uz", 0.0))) <= 0.0:
         raise SystemExit(f"Expected non-zero simplified planar beam uz displacement, got {tip_disp}")
     if abs(float(tip_disp.get("uy", 0.0))) > 1e-9:
@@ -321,6 +333,7 @@ def validate_analyze_contract():
 def _seismic_frame_payload():
     return {
         "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system(),
         "unit_system": "SI",
         "site_seismic": {
             "intensity": 8,
@@ -375,6 +388,7 @@ def _seismic_frame_payload():
 def _seismic_wall_line_payload():
     return {
         "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system(),
         "unit_system": "SI",
         "site_seismic": {
             "intensity": 8,
@@ -465,6 +479,7 @@ def _seismic_space_frame_payload():
 
     return {
         "schema_version": "2.0.0",
+        "coordinate_system": canonical_coordinate_system("3d"),
         "unit_system": "SI",
         "site_seismic": {
             "intensity": 8,
@@ -4153,11 +4168,12 @@ def validate_structure_examples():
     validated = 0
     for file_path in files:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
-        StructureModelV2.model_validate(payload)
+        StructureModelV1.model_validate(payload)
+        StructureModelV2.model_validate(migrate_v1_to_v2(payload))
         validated += 1
         print(f"[ok] {file_path.name}")
 
-    print(f"Validated {validated} StructureModel examples against V2 schema.")
+    print(f"Validated and migrated {validated} StructureModel V1 examples to the canonical V2 schema.")
 
 
 def validate_convert_roundtrip():

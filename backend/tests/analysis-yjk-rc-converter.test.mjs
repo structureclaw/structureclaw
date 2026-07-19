@@ -126,6 +126,13 @@ describe('YJK RC frame converter', () => {
       const model = {
         schema_version: '2.0.0',
         unit_system: 'SI',
+        coordinate_system: {
+          semantics: 'global-z-up',
+          version: 1,
+          dimension: '3d',
+          plane: null,
+          dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+        },
         project: { name: 'rc_frame_test', extra: { designCode: 'GB50010' } },
         materials: [
           { id: '1', name: 'C30', grade: 'C30', category: 'concrete', E: 30000, fc: 14.3 },
@@ -154,13 +161,22 @@ describe('YJK RC frame converter', () => {
         nodes: [
           { id: 'N0_0', x: 0, y: 0, z: 0 },
           { id: 'N0_1', x: 6, y: 0, z: 0 },
+          { id: 'N0_2', x: 0, y: 4, z: 0 },
+          { id: 'N0_3', x: 6, y: 4, z: 0 },
           { id: 'N1_0', x: 0, y: 0, z: 3, story: 'F1' },
           { id: 'N1_1', x: 6, y: 0, z: 3, story: 'F1' },
+          { id: 'N1_2', x: 0, y: 4, z: 3, story: 'F1' },
+          { id: 'N1_3', x: 6, y: 4, z: 3, story: 'F1' },
         ],
         elements: [
           { id: 'C1', type: 'column', nodes: ['N0_0', 'N1_0'], material: '1', section: '1', story: 'F1' },
           { id: 'C2', type: 'column', nodes: ['N0_1', 'N1_1'], material: '1', section: '1', story: 'F1' },
-          { id: 'B3', type: 'beam', nodes: ['N1_0', 'N1_1'], material: '1', section: '2', story: 'F1' },
+          { id: 'C3', type: 'column', nodes: ['N0_2', 'N1_2'], material: '1', section: '1', story: 'F1' },
+          { id: 'C4', type: 'column', nodes: ['N0_3', 'N1_3'], material: '1', section: '1', story: 'F1' },
+          { id: 'BX1', type: 'beam', nodes: ['N1_0', 'N1_1'], material: '1', section: '2', story: 'F1' },
+          { id: 'BX2', type: 'beam', nodes: ['N1_2', 'N1_3'], material: '1', section: '2', story: 'F1' },
+          { id: 'BY1', type: 'beam', nodes: ['N1_0', 'N1_2'], material: '1', section: '2', story: 'F1' },
+          { id: 'BY2', type: 'beam', nodes: ['N1_1', 'N1_3'], material: '1', section: '2', story: 'F1' },
         ],
         stories: [
           {
@@ -236,6 +252,15 @@ describe('YJK RC frame converter', () => {
         'Floors_Assemb',
         'CreateYDB',
       ]));
+      expect(payload.calls.find((call) => call.method === 'node_generate')).toMatchObject({
+        xspans: [0, 6000],
+        yspans: [0, 4000],
+      });
+      expect(payload.mapping.coordinate_contract).toMatchObject({
+        semantics: 'global-z-up',
+        dimension: '3d',
+        coordinate_transform: 'identity',
+      });
       expect(payload.mapping.sections['1']).toMatchObject({
         role: 'column',
         yjk_mat_type: 6,

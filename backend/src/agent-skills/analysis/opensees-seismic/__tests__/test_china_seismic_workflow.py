@@ -28,6 +28,16 @@ from spectrum import generate_design_spectrum, seismic_influence_coefficient  # 
 from structure_protocol.structure_model_v2 import StructureModelV2  # noqa: E402
 
 
+def _coordinate_system(dimension: str) -> dict:
+    return {
+        "semantics": "global-z-up",
+        "version": 1,
+        "dimension": dimension,
+        "plane": "xz" if dimension == "2d" else None,
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def expected_gb50011_alpha(period: float, alpha_max: float, tg: float, damping_ratio: float) -> float:
     damping = max(0.01, min(0.20, damping_ratio))
     gamma = 0.9 + (0.05 - damping) / (0.3 + 6.0 * damping)
@@ -49,6 +59,7 @@ def build_frame_model() -> StructureModelV2:
     return StructureModelV2.model_validate({
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("2d"),
         "site_seismic": {
             "intensity": 8,
             "design_group": "2",
@@ -114,6 +125,7 @@ def build_space_frame_model() -> StructureModelV2:
     return StructureModelV2.model_validate({
         "schema_version": "2.0.0",
         "unit_system": "SI",
+        "coordinate_system": _coordinate_system("3d"),
         "site_seismic": {
             "intensity": 8,
             "design_group": "2",
