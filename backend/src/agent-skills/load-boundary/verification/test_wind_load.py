@@ -23,6 +23,13 @@ wind_load_runtime = adapter.import_skill_runtime("wind-load")
 WindLoadGenerator = wind_load_runtime.WindLoadGenerator
 
 
+def _coordinate_system() -> dict:
+    return {
+        "semantics": "global-z-up", "version": 1, "dimension": "2d", "plane": "xz",
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def create_test_model():
     """创建测试用的结构模型"""
     # 创建材料
@@ -120,6 +127,7 @@ def create_test_model():
     
     # 创建模型
     model = StructureModelV2(
+        coordinate_system=_coordinate_system(),
         nodes=nodes,
         elements=elements,
         materials=materials,

@@ -1,6 +1,13 @@
 {
   "schema_version": "2.0.0",
   "unit_system": "SI",
+  "coordinate_system": {
+    "semantics": "global-z-up",
+    "version": 1,
+    "dimension": "3d",
+    "plane": null,
+    "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"]
+  },
   "project": {
     "name": "某住宅剪力墙结构",
     "code_standard": "GB50011-2010",

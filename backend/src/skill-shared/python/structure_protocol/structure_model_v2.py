@@ -27,9 +27,22 @@ Density rho                   kg/m³
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StrictBool, model_validator
+
+
+def _resolve_entity_alias(
+    record: Dict[str, Any], keys: tuple[str, ...], label: str
+) -> Optional[str]:
+    values = [str(record[key]) for key in keys if record.get(key) is not None]
+    if any(not value for value in values):
+        raise ValueError(f"{label} must have a non-empty id")
+    unique = set(values)
+    if len(unique) > 1:
+        raise ValueError(f"{label} contains conflicting aliases")
+    return values[0] if values else None
 
 
 # ---------------------------------------------------------------------------
@@ -291,10 +304,10 @@ class NodeV2(BaseModel):
     """节点 / Node — same as V1."""
 
     id: str = Field(..., min_length=1)
-    x: float
-    y: float
-    z: float
-    restraints: Optional[List[bool]] = Field(
+    x: float = Field(..., allow_inf_nan=False)
+    y: float = Field(..., allow_inf_nan=False)
+    z: float = Field(..., allow_inf_nan=False)
+    restraints: Optional[List[StrictBool]] = Field(
         default=None,
         min_length=6,
         max_length=6,
@@ -341,6 +354,7 @@ class ElementV2(BaseModel):
     # Geometry overrides
     rotation_angle: Optional[float] = Field(
         default=None,
+        allow_inf_nan=False,
         description="截面绕构件轴的旋转角 (度)，对应 PKPM SetAngle()",
     )
     offsets: Optional[Dict[str, float]] = Field(
@@ -567,16 +581,46 @@ class AnalysisControl(BaseModel):
 # Root model
 # ---------------------------------------------------------------------------
 
+class CoordinateSystemV2(BaseModel):
+    """Canonical global coordinate and DOF contract.
+
+    StructureClaw uses a right-handed global Z-up system.  Two-dimensional
+    structures are represented only in the global X-Z plane; Y is their
+    out-of-plane axis.
+    """
+
+    semantics: Literal["global-z-up"]
+    version: Literal[1]
+    dimension: Literal["2d", "3d"]
+    plane: Optional[Literal["xz"]]
+    dof_order: List[Literal["ux", "uy", "uz", "rx", "ry", "rz"]] = Field(
+        ...,
+        min_length=6,
+        max_length=6,
+    )
+
+    @model_validator(mode="after")
+    def validate_dimension_plane(self) -> "CoordinateSystemV2":
+        expected_order = ["ux", "uy", "uz", "rx", "ry", "rz"]
+        if list(self.dof_order) != expected_order:
+            raise ValueError(f"dof_order must be {expected_order}")
+        if self.dimension == "2d" and self.plane != "xz":
+            raise ValueError("Canonical 2-D structures must use the global X-Z plane")
+        if self.dimension == "3d" and self.plane is not None:
+            raise ValueError("Three-dimensional structures cannot declare a 2-D plane")
+        return self
+
 class StructureModelV2(BaseModel):
     """Unified structural analysis JSON schema V2.
 
     Covers the core parameters required by OpenSeesPy, PKPM, YJK, and other
-    mainstream structural analysis engines.  All V2-only fields are Optional
-    so that migrated V1 payloads validate without modification.
+    mainstream structural analysis engines.  Migrated V1 payloads receive an
+    explicit typed coordinate contract before V2 validation.
     """
 
     schema_version: str = Field(default="2.0.0")
     unit_system: str = Field(default="SI")
+    coordinate_system: CoordinateSystemV2
 
     # --- NEW in V2 ---
     project: Optional[ProjectInfo] = None
@@ -607,18 +651,86 @@ class StructureModelV2(BaseModel):
     @model_validator(mode="after")
     def validate_references(self) -> "StructureModelV2":
         """Cross-reference validation across all entity collections."""
+        declared_dimension = self.coordinate_system.dimension
+
+        metadata_semantics = self.metadata.get("coordinateSemantics")
+        if metadata_semantics not in {None, "global-z-up"}:
+            raise ValueError(
+                f"metadata.coordinateSemantics '{metadata_semantics}' conflicts with the canonical contract"
+            )
+        metadata_version = self.metadata.get("coordinateContractVersion")
+        if metadata_version not in {None, 1}:
+            raise ValueError(
+                f"metadata.coordinateContractVersion '{metadata_version}' conflicts with the canonical contract"
+            )
+        metadata_dimension = self.metadata.get("frameDimension")
+        if metadata_dimension is not None and metadata_dimension not in {"2d", "3d"}:
+            raise ValueError("metadata.frameDimension must be '2d' or '3d'")
+        if metadata_dimension is not None and metadata_dimension != declared_dimension:
+            raise ValueError(
+                f"metadata.frameDimension '{metadata_dimension}' conflicts with coordinate_system.dimension "
+                f"'{declared_dimension}'"
+            )
+
+        self.metadata = {
+            **self.metadata,
+            "coordinateSemantics": "global-z-up",
+            "coordinateContractVersion": 1,
+            "frameDimension": declared_dimension,
+        }
+
+        if declared_dimension == "2d":
+            for node in self.nodes:
+                if abs(float(node.y)) > 1e-9:
+                    raise ValueError(
+                        f"Node '{node.id}' has non-zero global Y in a canonical X-Z 2-D model"
+                    )
+
         node_ids = {n.id for n in self.nodes}
+        nodes_by_id = {node.id: node for node in self.nodes}
         material_ids = {m.id for m in self.materials}
         section_ids = {s.id for s in self.sections}
         story_ids = {s.id for s in self.stories} if self.stories else set()
         element_ids = {e.id for e in self.elements}
 
+        for collection_name, values in (
+            ("node", [node.id for node in self.nodes]),
+            ("element", [element.id for element in self.elements]),
+            ("material", [material.id for material in self.materials]),
+            ("section", [section.id for section in self.sections]),
+            ("load case", [load_case.id for load_case in self.load_cases]),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"Duplicate {collection_name} id")
+
         for elem in self.elements:
+            if elem.type in {"beam", "column", "truss", "brace", "link"} and len(elem.nodes) != 2:
+                raise ValueError(f"Line element '{elem.id}' must reference exactly two nodes")
+            if declared_dimension == "2d" and abs(float(elem.rotation_angle or 0.0)) > 1e-9:
+                raise ValueError(
+                    f"Element '{elem.id}' cannot rotate its section axes in a canonical 2-D model"
+                )
             for node_id in elem.nodes:
                 if node_id not in node_ids:
                     raise ValueError(
                         f"Element '{elem.id}' references unknown node '{node_id}'"
                     )
+            if len(set(elem.nodes)) != len(elem.nodes):
+                raise ValueError(f"Element '{elem.id}' contains duplicate node references")
+            if len(elem.nodes) >= 2 and all(node_id in nodes_by_id for node_id in elem.nodes[:2]):
+                start = nodes_by_id[elem.nodes[0]]
+                end = nodes_by_id[elem.nodes[1]]
+                length = math.sqrt(
+                    (float(end.x) - float(start.x)) ** 2
+                    + (float(end.y) - float(start.y)) ** 2
+                    + (float(end.z) - float(start.z)) ** 2
+                )
+                if length <= 1e-9:
+                    raise ValueError(f"Element '{elem.id}' has zero length")
+            if elem.offsets is not None:
+                for key, value in elem.offsets.items():
+                    if not math.isfinite(float(value)):
+                        raise ValueError(f"Element '{elem.id}' offset '{key}' must be finite")
             if elem.material not in material_ids:
                 raise ValueError(
                     f"Element '{elem.id}' references unknown material '{elem.material}'"
@@ -632,6 +744,56 @@ class StructureModelV2(BaseModel):
                     f"Element '{elem.id}' references unknown story '{elem.story}'"
                 )
 
+        reference_vectors = self.metadata.get("elementReferenceVectors")
+        if reference_vectors is not None:
+            if declared_dimension == "2d":
+                raise ValueError(
+                    "Canonical 2-D local axes are fixed; elementReferenceVectors are not allowed"
+                )
+            if not isinstance(reference_vectors, dict):
+                raise ValueError("metadata.elementReferenceVectors must be an object")
+            for element_id, raw_vector in reference_vectors.items():
+                normalized_id = str(element_id)
+                element = next((item for item in self.elements if item.id == normalized_id), None)
+                if element is None:
+                    raise ValueError(f"Reference vector targets unknown element '{normalized_id}'")
+                if not isinstance(raw_vector, list) or len(raw_vector) != 3:
+                    raise ValueError(
+                        f"Element '{normalized_id}' reference vector must contain three finite numbers"
+                    )
+                try:
+                    vector = [float(value) for value in raw_vector]
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"Element '{normalized_id}' reference vector must contain three finite numbers"
+                    ) from error
+                if not all(math.isfinite(value) for value in vector):
+                    raise ValueError(
+                        f"Element '{normalized_id}' reference vector must contain three finite numbers"
+                    )
+                start = nodes_by_id[element.nodes[0]]
+                end = nodes_by_id[element.nodes[1]]
+                direction = [
+                    float(end.x) - float(start.x),
+                    float(end.y) - float(start.y),
+                    float(end.z) - float(start.z),
+                ]
+                vector_length = math.sqrt(sum(value * value for value in vector))
+                direction_length = math.sqrt(sum(value * value for value in direction))
+                cross = [
+                    vector[1] * direction[2] - vector[2] * direction[1],
+                    vector[2] * direction[0] - vector[0] * direction[2],
+                    vector[0] * direction[1] - vector[1] * direction[0],
+                ]
+                cross_length = math.sqrt(sum(value * value for value in cross))
+                if (
+                    vector_length <= 1e-9
+                    or cross_length / (vector_length * direction_length) <= 1e-9
+                ):
+                    raise ValueError(
+                        f"Element '{normalized_id}' reference vector cannot be zero or parallel to its axis"
+                    )
+
         for node in self.nodes:
             if node.story and node.story not in story_ids:
                 raise ValueError(
@@ -639,6 +801,114 @@ class StructureModelV2(BaseModel):
                 )
 
         load_case_ids = {lc.id for lc in self.load_cases}
+        for load_case in self.load_cases:
+            for load in load_case.loads:
+                reference_frame = load.get("reference_frame", "global")
+                if reference_frame not in {"global", "element-local"}:
+                    raise ValueError(
+                        f"Load in '{load_case.id}' has invalid reference_frame '{reference_frame}'"
+                    )
+                load["reference_frame"] = reference_frame
+                node_ref = _resolve_entity_alias(
+                    load, ("node", "nodeId", "node_id"), "Nodal load target"
+                )
+                element_ref = _resolve_entity_alias(
+                    load, ("element", "elementId", "element_id"), "Member load target"
+                )
+                if (node_ref is None) == (element_ref is None):
+                    raise ValueError("Every structural load must target exactly one node or element")
+                if node_ref is not None and node_ref not in node_ids:
+                    raise ValueError(f"Load in '{load_case.id}' references unknown node '{node_ref}'")
+                if element_ref is not None and element_ref not in element_ids:
+                    raise ValueError(f"Load in '{load_case.id}' references unknown element '{element_ref}'")
+                legacy_component_names = [
+                    key for key in (
+                        "Fx", "Fy", "Fz", "Mx", "My", "Mz",
+                        "momentX", "momentY", "momentZ",
+                    )
+                    if key in load
+                ]
+                if legacy_component_names:
+                    raise ValueError(
+                        "V2 load components must use lowercase fx/fy/fz/mx/my/mz: "
+                        + ", ".join(legacy_component_names)
+                    )
+                if node_ref is not None and any(key in load for key in ("wx", "wy", "wz")):
+                    raise ValueError(
+                        "Nodal loads must use fx/fy/fz and mx/my/mz, not member-load w components"
+                    )
+                if element_ref is not None and any(
+                    key in load for key in ("fx", "fy", "fz", "mx", "my", "mz", "forces")
+                ):
+                    raise ValueError(
+                        "Member loads must use wx/wy/wz, not nodal force or moment components"
+                    )
+                for key in (
+                    "fx", "fy", "fz", "mx", "my", "mz",
+                    "wx", "wy", "wz",
+                ):
+                    if key not in load or load.get(key) is None:
+                        continue
+                    try:
+                        numeric_value = float(load[key])
+                    except (TypeError, ValueError) as error:
+                        raise ValueError(f"Load component '{key}' must be finite") from error
+                    if not math.isfinite(numeric_value):
+                        raise ValueError(f"Load component '{key}' must be finite")
+                forces = load.get("forces")
+                if forces is not None:
+                    if any(
+                        key in load
+                        for key in (
+                            "fx", "fy", "fz", "mx", "my", "mz",
+                            "value", "magnitude", "direction", "axis",
+                        )
+                    ):
+                        raise ValueError(
+                            "Nodal load forces cannot be combined with component or directional aliases"
+                        )
+                    if not isinstance(forces, list) or len(forces) != 6:
+                        raise ValueError("Load forces must contain [fx, fy, fz, mx, my, mz]")
+                    try:
+                        numeric_forces = [float(value) for value in forces]
+                    except (TypeError, ValueError) as error:
+                        raise ValueError("Load forces must contain six finite values") from error
+                    if not all(math.isfinite(value) for value in numeric_forces):
+                        raise ValueError("Load forces must contain six finite values")
+                is_distributed = (
+                    str(load.get("type", "")).lower() == "distributed"
+                    or element_ref is not None
+                )
+                if reference_frame == "element-local" and not is_distributed:
+                    raise ValueError("Only member loads may use reference_frame='element-local'")
+                if declared_dimension == "2d" and reference_frame == "global":
+                    inactive_values = {
+                        "fy": load.get("fy", 0.0),
+                        "mx": load.get("mx", 0.0),
+                        "mz": load.get("mz", 0.0),
+                        "wy": load.get("wy", 0.0),
+                    }
+                    if isinstance(forces, list) and len(forces) >= 6:
+                        inactive_values.update({
+                            "forces[1]": forces[1],
+                            "forces[3]": forces[3],
+                            "forces[5]": forces[5],
+                        })
+                    nonzero = [
+                        key for key, value in inactive_values.items()
+                        if abs(float(value or 0.0)) > 1e-9
+                    ]
+                    if nonzero:
+                        raise ValueError(
+                            "Out-of-plane load components are not allowed in a canonical X-Z 2-D model: "
+                            + ", ".join(nonzero)
+                        )
+                if declared_dimension == "2d" and reference_frame == "element-local":
+                    if abs(float(load.get("wy", 0.0) or 0.0)) > 1e-9:
+                        raise ValueError(
+                            "Local wy is out of plane for a canonical X-Z 2-D member load"
+                        )
+
         for combo in self.load_combinations:
             for case_id in combo.factors:
                 if case_id not in load_case_ids:

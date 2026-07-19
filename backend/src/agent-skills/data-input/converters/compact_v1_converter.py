@@ -77,7 +77,10 @@ class CompactV1Converter(FormatConverter):
                 }
                 for combo_id, combo_data in load_combinations.items()
             ],
-            "metadata": payload.get("meta", {}),
+            "metadata": {
+                **(payload.get("meta", {}) if isinstance(payload.get("meta"), dict) else {}),
+                "coordinateSemantics": "global-z-up",
+            },
         }
 
     def from_v1(self, model: StructureModelV1) -> Dict[str, Any]:

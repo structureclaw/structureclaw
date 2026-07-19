@@ -36,10 +36,10 @@ describe('beam handler', () => {
     expect(model.nodes.map((node) => node.x)).toEqual([0, 4, 6, 12]);
     expect(model.elements).toHaveLength(3);
     expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
-      { type: 'distributed', element: '1', wz: -15, wy: 0 },
-      { type: 'distributed', element: '2', wz: -15, wy: 0 },
-      { type: 'distributed', element: '3', wz: -15, wy: 0 },
-      { node: '2', fz: -50 },
+      { type: 'distributed', element: '1', wz: -15, wy: 0, reference_frame: 'global' },
+      { type: 'distributed', element: '2', wz: -15, wy: 0, reference_frame: 'global' },
+      { type: 'distributed', element: '3', wz: -15, wy: 0, reference_frame: 'global' },
+      { node: '2', fz: -50, reference_frame: 'global' },
     ]));
   });
 
@@ -87,12 +87,12 @@ describe('beam handler', () => {
 
     expect(model.nodes.map((node) => node.x)).toEqual([0, 3, 6]);
     expect(model.elements).toHaveLength(2);
-    expect(model.nodes[0].restraints).toEqual([true, true, true, true, true, false]);
+    expect(model.nodes[0].restraints).toEqual([true, true, true, false, false, false]);
     expect(model.nodes[1].restraints).toBeUndefined();
-    expect(model.nodes[2].restraints).toEqual([false, true, true, true, true, false]);
+    expect(model.nodes[2].restraints).toEqual([false, true, true, false, false, false]);
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'distributed', element: '1', wz: -20, wy: 0 },
-      { type: 'distributed', element: '2', wz: -20, wy: 0 },
+      { type: 'distributed', element: '1', wz: -20, wy: 0, reference_frame: 'global' },
+      { type: 'distributed', element: '2', wz: -20, wy: 0, reference_frame: 'global' },
     ]);
   });
 
@@ -115,14 +115,14 @@ describe('beam handler', () => {
 
     expect(state.lengthM).toBe(6.5);
     expect(model.nodes.map((node) => node.x)).toEqual([0, 3.25, 5, 6.5]);
-    expect(model.nodes[0].restraints).toEqual([true, true, true, true, true, false]);
-    expect(model.nodes[2].restraints).toEqual([false, true, true, true, true, false]);
+    expect(model.nodes[0].restraints).toEqual([true, true, true, false, false, false]);
+    expect(model.nodes[2].restraints).toEqual([false, true, true, false, false, false]);
     expect(model.nodes[3].restraints).toBeUndefined();
     expect(model.elements).toHaveLength(3);
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'distributed', element: '1', wz: -15, wy: 0 },
-      { type: 'distributed', element: '2', wz: -15, wy: 0 },
-      { type: 'distributed', element: '3', wz: -15, wy: 0 },
+      { type: 'distributed', element: '1', wz: -15, wy: 0, reference_frame: 'global' },
+      { type: 'distributed', element: '2', wz: -15, wy: 0, reference_frame: 'global' },
+      { type: 'distributed', element: '3', wz: -15, wy: 0, reference_frame: 'global' },
     ]);
   });
 

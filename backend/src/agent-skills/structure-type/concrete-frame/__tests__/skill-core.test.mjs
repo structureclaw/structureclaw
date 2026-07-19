@@ -323,13 +323,13 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(model.stories).toEqual([
       expect.objectContaining({
         id: 'F1',
-        floor_loads: [{ type: 'dead', value: 16.67 }],
-        dead_load: 16.67,
+        floor_loads: [{ type: 'dead', value: 100 / 6 }],
+        dead_load: 100 / 6,
       }),
       expect.objectContaining({
         id: 'F2',
-        floor_loads: [{ type: 'dead', value: 16.67 }],
-        dead_load: 16.67,
+        floor_loads: [{ type: 'dead', value: 100 / 6 }],
+        dead_load: 100 / 6,
       }),
     ]);
     expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D']);

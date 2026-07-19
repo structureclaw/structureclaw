@@ -22,12 +22,20 @@ dead_load_runtime = adapter.import_skill_runtime("dead-load")
 generate_dead_loads = dead_load_runtime.generate_dead_loads
 
 
+def _coordinate_system() -> dict:
+    return {
+        "semantics": "global-z-up", "version": 1, "dimension": "2d", "plane": "xz",
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def test_self_weight_calculation():
     """测试自重计算"""
     print("Testing self-weight calculation...")
 
     # 创建测试模型
     model = StructureModelV2(
+        coordinate_system=_coordinate_system(),
         nodes=[
             NodeV2(id="N1", x=0, y=0, z=0),
             NodeV2(id="N2", x=6, y=0, z=0),
@@ -101,7 +109,7 @@ def test_custom_dead_load():
     print("\nTesting custom dead load...")
 
     # 创建简单模型
-    model = StructureModelV2()
+    model = StructureModelV2(coordinate_system=_coordinate_system())
 
     # 添加自定义恒载
     result = generate_dead_loads(model, {
@@ -133,7 +141,7 @@ def test_point_dead_load():
 
     from dead_load.runtime import DeadLoadGenerator
 
-    model = StructureModelV2()
+    model = StructureModelV2(coordinate_system=_coordinate_system())
     generator = DeadLoadGenerator(model)
 
     # 添加集中荷载

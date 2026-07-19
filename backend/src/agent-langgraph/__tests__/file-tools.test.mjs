@@ -73,14 +73,17 @@ describe('file-tools helpers', () => {
     test('extracts LINE entities with coordinates', async () => {
       const { parseDxf } = await import('../../../dist/agent-langgraph/file-tools.js');
       const dxf = [
+        '9', '$INSUNITS', '70', '4',
         '0', 'LINE',
-        '10', '1.0', '20', '2.0',
-        '11', '3.0', '21', '4.0',
+        '8', 'STRUCTURE',
+        '10', '1.0', '20', '2.0', '30', '5.0',
+        '11', '3.0', '21', '4.0', '31', '6.0',
         '0', 'EOF',
       ].join('\n');
       const result = parseDxf(dxf);
       expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]).toEqual({ x1: 1, y1: 2, x2: 3, y2: 4 });
+      expect(result.lines[0]).toEqual({ x1: 1, y1: 2, z1: 5, x2: 3, y2: 4, z2: 6, layer: 'STRUCTURE' });
+      expect(result.insertionUnits).toEqual({ code: 4, name: 'millimeters', metersPerUnit: 0.001 });
     });
 
     test('extracts TEXT and MTEXT content', async () => {
@@ -97,12 +100,30 @@ describe('file-tools helpers', () => {
       expect(result.texts).toEqual(['Hello World', 'Beam Label']);
     });
 
+    test('rejects malformed LINE coordinates instead of emitting non-finite or invented points', async () => {
+      const { parseDxf } = await import('../../../dist/agent-langgraph/file-tools.js');
+      const dxf = [
+        '0', 'LINE',
+        '10', 'not-a-number', '20', '2',
+        '11', '3', '21', '4',
+        '0', 'LINE',
+        '10', '1', '20', '2',
+        '11', '3',
+        '0', 'EOF',
+      ].join('\n');
+      const result = parseDxf(dxf);
+      expect(result.lines).toEqual([]);
+      expect(result.invalidLineCount).toBe(2);
+    });
+
     test('empty DXF returns zero entities', async () => {
       const { parseDxf } = await import('../../../dist/agent-langgraph/file-tools.js');
       const result = parseDxf('');
       expect(result.entityCount).toBe(0);
       expect(result.lines).toEqual([]);
       expect(result.texts).toEqual([]);
+      expect(result.invalidLineCount).toBe(0);
+      expect(result.insertionUnits).toBeNull();
     });
   });
 });

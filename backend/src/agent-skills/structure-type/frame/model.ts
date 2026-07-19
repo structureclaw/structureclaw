@@ -1,6 +1,7 @@
 import { computeMissingCriticalKeys } from '../../../agent-runtime/draft-guidance.js';
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
+  withCanonicalCoordinateContract,
 } from '../../../agent-runtime/coordinate-semantics.js';
 import { buildElementReferenceVectors } from '../../../agent-runtime/reference-vectors.js';
 import type { DraftFloorLoad, DraftState, EngineeringDraftLoad } from '../../../agent-runtime/types.js';
@@ -243,17 +244,17 @@ function n3dId(storyIdx: number, xIdx: number, yIdx: number): string {
 }
 
 function buildStoryFloorLoadFields(deadLoad: number | undefined, liveLoad: number | undefined): Record<string, unknown> {
-  const roundedDeadLoad = deadLoad ? Math.round(deadLoad * 100) / 100 : undefined;
-  const roundedLiveLoad = liveLoad ? Math.round(liveLoad * 100) / 100 : undefined;
+  const exactDeadLoad = deadLoad && Number.isFinite(deadLoad) ? deadLoad : undefined;
+  const exactLiveLoad = liveLoad && Number.isFinite(liveLoad) ? liveLoad : undefined;
   const floorLoads = [
-    ...(roundedDeadLoad ? [{ type: 'dead', value: roundedDeadLoad }] : []),
-    ...(roundedLiveLoad ? [{ type: 'live', value: roundedLiveLoad }] : []),
+    ...(exactDeadLoad ? [{ type: 'dead', value: exactDeadLoad }] : []),
+    ...(exactLiveLoad ? [{ type: 'live', value: exactLiveLoad }] : []),
   ];
 
   return {
     ...(floorLoads.length ? { floor_loads: floorLoads } : {}),
-    ...(roundedDeadLoad ? { dead_load: roundedDeadLoad } : {}),
-    ...(roundedLiveLoad ? { live_load: roundedLiveLoad } : {}),
+    ...(exactDeadLoad ? { dead_load: exactDeadLoad } : {}),
+    ...(exactLiveLoad ? { live_load: exactLiveLoad } : {}),
   };
 }
 
@@ -762,5 +763,8 @@ export function buildFrameModel(state: DraftState): Record<string, unknown> | un
     && !(key === 'floorLoads' && hasFrameAnalysisLoadInput(state))
   ));
   if (critical.length > 0) return undefined;
-  return buildFrameLocalModel(state);
+  return withCanonicalCoordinateContract(
+    buildFrameLocalModel(state),
+    state.frameDimension === '3d' ? '3d' : '2d',
+  );
 }

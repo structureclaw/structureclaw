@@ -27,9 +27,18 @@ load_action_module = adapter.import_core_module("load_action")
 create_load_action = load_action_module.create_load_action
 
 
+def _coordinate_system(dimension: str = "2d") -> dict:
+    return {
+        "semantics": "global-z-up", "version": 1, "dimension": dimension,
+        "plane": "xz" if dimension == "2d" else None,
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def create_test_model() -> StructureModelV2:
     """Create a test structure model with materials, sections, nodes, and elements."""
     return StructureModelV2(
+        coordinate_system=_coordinate_system(),
         materials={
             "mat1": MaterialV2(
                 id="mat1",

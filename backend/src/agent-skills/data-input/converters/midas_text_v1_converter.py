@@ -99,6 +99,7 @@ class MidasTextV1Converter(FormatConverter):
             "load_combinations": state.load_combinations,
             "metadata": {
                 "source": "midas-text-1",
+                "coordinateSemantics": "global-z-up",
             },
         }
 

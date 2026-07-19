@@ -46,11 +46,19 @@ boundary_condition_runtime = adapter.import_skill_runtime("boundary-condition")
 apply_boundary_conditions = boundary_condition_runtime.apply_boundary_conditions
 
 
+def _coordinate_system() -> dict:
+    return {
+        "semantics": "global-z-up", "version": 1, "dimension": "2d", "plane": "xz",
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def create_sample_model():
     """创建示例结构模型 (两跨三层框架)"""
     return StructureModelV2(
         schema_version="2.0.0",
         unit_system="SI",
+        coordinate_system=_coordinate_system(),
         project=ProjectInfo(
             name="示例框架",
             code_standard="GB50010-2010",

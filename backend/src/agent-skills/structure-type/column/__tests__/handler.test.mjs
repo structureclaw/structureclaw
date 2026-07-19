@@ -78,8 +78,8 @@ describe('column handler', () => {
     expect(model.nodes).toHaveLength(2);
     expect(model.elements).toHaveLength(1);
     expect(model.load_cases[0].loads).toEqual([
-      { node: '2', fz: -600 },
-      { node: '2', fx: 30 },
+      { node: '2', fz: -600, reference_frame: 'global' },
+      { node: '2', fx: 30, reference_frame: 'global' },
     ]);
   });
 });

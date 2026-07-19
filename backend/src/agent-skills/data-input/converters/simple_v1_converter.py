@@ -77,7 +77,10 @@ class SimpleV1Converter(FormatConverter):
                 }
                 for c in load_combinations
             ],
-            "metadata": payload.get("meta", {}),
+            "metadata": {
+                **(payload.get("meta", {}) if isinstance(payload.get("meta"), dict) else {}),
+                "coordinateSemantics": "global-z-up",
+            },
         }
 
     def from_v1(self, model: StructureModelV1) -> Dict[str, Any]:

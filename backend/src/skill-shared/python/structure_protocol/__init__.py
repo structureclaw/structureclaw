@@ -14,6 +14,7 @@ from structure_protocol.structure_model_v1 import (
 )
 from structure_protocol.structure_model_v2 import (
     AnalysisControl,
+    CoordinateSystemV2,
     ElementV2,
     FloorLoad,
     LoadCaseV2,
@@ -45,6 +46,7 @@ __all__ = [
     "StructureModelV1",
     # V2 models
     "AnalysisControl",
+    "CoordinateSystemV2",
     "ElementV2",
     "FloorLoad",
     "LoadCaseV2",

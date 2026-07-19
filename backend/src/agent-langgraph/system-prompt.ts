@@ -162,7 +162,7 @@ ${summarizeArtifacts(state)}
 - 用户上传文件后，其 relPath 会随对话上下文传入。当用户提到上传的文件时，首先调用 analyze_file 获取文件内容。
 - analyze_file 返回 CSV/Excel 的表格数据后，调用 extract_draft_params 将数据映射到结构参数。
 - 图片附件会在进入主 agent 前由独立 vision 模型解析为文本摘要；主 agent 只使用该摘要和解析文本。若 analyze_file 返回图片元数据或 base64DataUri，不要把它作为 image_url 传给普通模型；如果没有视觉摘要，请追问缺失信息。
-- analyze_file 返回 DXF 数据后，根据线条几何、尺寸和图纸文字标注判断结构类型和构件，并调用 extract_draft_params。
+- analyze_file 返回的 DXF 坐标仍属于源图纸坐标系。必须先根据用户说明和标注确认平面图/立面图/三维 WCS：立面图源 X/Y 映射到全局 X/Z 且全局 Y=0；平面图源 X/Y 映射到全局 X/Y，并由明确楼层提供 Z；三维 DXF 只有在 WCS 与竖向轴明确时才能采用源 X/Y/Z。视图、单位或轴映射不明确时必须追问，禁止按非零 Y 猜 3D 或静默交换 Y/Z；确认后再调用 extract_draft_params。
 - analyze_file 返回 PDF 文本后，基于 LLM 语义理解提取尺寸、荷载、材料等参数，再调用 extract_draft_params；不要用关键词或正则匹配替代语义理解。
 
 **中国抗震分析规则**:
@@ -242,7 +242,7 @@ When the user makes a structural design or analysis request, follow this workflo
 - When a user uploads a file, its relPath is passed in the conversation context. Call analyze_file first to retrieve the file content.
 - After analyze_file returns CSV/Excel tabular data, call extract_draft_params to map the data to structural parameters.
 - Image attachments are parsed into text summaries by the independent vision model before reaching the main agent; the main agent uses only those summaries and parsed text. If analyze_file returns image metadata or base64DataUri, do not pass it as image_url to the standard model; ask for missing information when no vision summary is available.
-- After analyze_file returns DXF data, infer the structure type and members from line geometry, dimensions, and drawing labels, then call extract_draft_params.
+- DXF coordinates returned by analyze_file remain in the source drawing frame. Confirm plan/elevation/3D WCS from the request and labels before mapping axes: elevation source X/Y maps to global X/Z with global Y=0; plan source X/Y maps to global X/Y with Z supplied by an explicit story; source X/Y/Z is usable for 3D only when its WCS and vertical axis are documented. Ask when view, units, or axis mapping is ambiguous; never infer 3D from nonzero source Y or silently swap Y/Z. Then call extract_draft_params.
 - After analyze_file returns PDF text, extract dimensions, loads, and materials by LLM semantic understanding, then call extract_draft_params; do not replace semantic understanding with keyword or regex matching.
 
 **China seismic analysis rules**:

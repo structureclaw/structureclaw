@@ -12,9 +12,10 @@ _PROTOCOL_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROTOCOL_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROTOCOL_ROOT))
 
-from structure_protocol.migrations import migrate_v1_to_v2
+from structure_protocol.migrations import ensure_v2_dict, migrate_v1_to_v2
 from structure_protocol.structure_model_v2 import (
     AnalysisControl,
+    CoordinateSystemV2,
     ElementV2,
     FloorLoad,
     LoadCaseV2,
@@ -37,6 +38,16 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 EXAMPLES_V2_DIR = Path(__file__).resolve().parent.parent / "examples_v2"
 
 
+def _coordinate_system(dimension: str = "2d") -> dict:
+    return {
+        "semantics": "global-z-up",
+        "version": 1,
+        "dimension": dimension,
+        "plane": "xz" if dimension == "2d" else None,
+        "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"],
+    }
+
+
 def _load_json(name: str, v2: bool = False) -> dict:
     base = EXAMPLES_V2_DIR if v2 else EXAMPLES_DIR
     with open(base / name, encoding="utf-8") as fh:
@@ -46,6 +57,7 @@ def _load_json(name: str, v2: bool = False) -> dict:
 def _minimal_model(**kwargs) -> StructureModelV2:
     """Helper: valid minimal model with two nodes, one beam, one material, one section."""
     defaults = dict(
+        coordinate_system=CoordinateSystemV2(**_coordinate_system()),
         nodes=[NodeV2(id="1", x=0, y=0, z=0), NodeV2(id="2", x=1, y=0, z=0)],
         elements=[ElementV2(id="e1", nodes=["1", "2"], material="m1", section="s1")],
         materials=[MaterialV2(id="m1", name="S", E=200000, nu=0.3, rho=7850)],
@@ -402,12 +414,142 @@ class TestMigration:
         result = migrate_v1_to_v2(v2_data)
         assert result["schema_version"] == "2.0.0"
 
+    def test_untyped_v2_payload_is_rejected_instead_of_inferred(self):
+        data = _load_json("model_13_v2_rc_frame.json", v2=True)
+        data.pop("coordinate_system")
+        with pytest.raises(ValueError, match="typed coordinate_system"):
+            ensure_v2_dict(data)
+        with pytest.raises(ValueError, match="coordinate_system"):
+            StructureModelV2.model_validate(data)
+
+    @pytest.mark.parametrize(
+        "coordinate_system",
+        [
+            {},
+            {"dimension": "2d", "plane": "xz"},
+            {
+                "semantics": "global-z-up",
+                "version": 1,
+                "dimension": "2d",
+                "plane": "xz",
+            },
+        ],
+    )
+    def test_partial_v2_coordinate_contract_is_rejected(self, coordinate_system):
+        data = _load_json("model_13_v2_rc_frame.json", v2=True)
+        data["coordinate_system"] = coordinate_system
+        with pytest.raises(ValueError, match="coordinate_system"):
+            StructureModelV2.model_validate(data)
+
+    def test_legacy_xz_load_aliases_migrate_to_canonical_components(self):
+        data = _load_json("model_01_single_beam.json")
+        data["load_cases"] = [{
+            "id": "LC1",
+            "loads": [
+                {
+                    "node": data["nodes"][-1]["id"],
+                    "fy": -7.0,
+                    "mz": 2.0,
+                    "forces": [1.0, -7.0, 0.0, 4.0, 0.0, 2.0],
+                },
+                {"element": data["elements"][0]["id"], "wy": -3.0},
+            ],
+        }]
+        migrated = migrate_v1_to_v2(data)
+        load = migrated["load_cases"][0]["loads"][0]
+        assert load["forces"] == [1.0, 0.0, -7.0, 0.0, 2.0, 0.0]
+        assert not any(key in load for key in ("fx", "fy", "fz", "mx", "my", "mz"))
+        member_load = migrated["load_cases"][0]["loads"][1]
+        assert (member_load["wy"], member_load["wz"]) == (0.0, -3.0)
+        assert migrated["coordinate_system"]["dimension"] == "2d"
+
+    def test_explicit_y_up_v1_rotates_geometry_vectors_and_dofs(self):
+        data = {
+            "schema_version": "1.0.0",
+            "metadata": {
+                "coordinateSemantics": "legacy-global-y-up",
+                "elementReferenceVectors": {"E1": [0.0, 0.0, 1.0]},
+            },
+            "nodes": [
+                {
+                    "id": "N1", "x": 0.0, "y": 0.0, "z": 0.0,
+                    "restraints": [True, False, True, False, False, True],
+                },
+                {"id": "N2", "x": 1.0, "y": 2.0, "z": 3.0},
+            ],
+            "elements": [{"id": "E1", "nodes": ["N1", "N2"], "material": "M1", "section": "S1"}],
+            "materials": [{"id": "M1", "name": "steel", "E": 200000, "nu": 0.3, "rho": 7850}],
+            "sections": [{"id": "S1", "name": "section", "type": "custom"}],
+            "load_cases": [{
+                "id": "LC1",
+                "loads": [{
+                    "node": "N2",
+                    "fx": 1.0, "fy": 2.0, "fz": 3.0,
+                    "mx": 4.0, "my": 5.0, "mz": 6.0,
+                    "forces": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                }],
+            }],
+        }
+        migrated = migrate_v1_to_v2(data)
+        assert migrated["nodes"][1] == {"id": "N2", "x": 1.0, "y": -3.0, "z": 2.0}
+        assert migrated["nodes"][0]["restraints"] == [True, True, False, False, True, False]
+        load = migrated["load_cases"][0]["loads"][0]
+        assert load["forces"] == [1.0, -3.0, 2.0, 4.0, -6.0, 5.0]
+        assert not any(key in load for key in ("fx", "fy", "fz", "mx", "my", "mz"))
+        assert migrated["metadata"]["elementReferenceVectors"]["E1"] == [0.0, -1.0, 0.0]
+        assert migrated["coordinate_system"]["dimension"] == "3d"
+
+    def test_planar_v1_reference_vectors_are_replaced_by_fixed_xz_axes(self):
+        data = {
+            "schema_version": "1.0.0",
+            "metadata": {
+                "coordinateSemantics": "legacy-global-y-up",
+                "elementReferenceVectors": {"E1": [0.0, 0.0, 1.0]},
+            },
+            "nodes": [
+                {"id": "N1", "x": 0.0, "y": 0.0, "z": 0.0},
+                {"id": "N2", "x": 5.0, "y": 3.0, "z": 0.0},
+            ],
+            "elements": [],
+        }
+        migrated = migrate_v1_to_v2(data)
+        assert migrated["coordinate_system"]["dimension"] == "2d"
+        assert migrated["nodes"][1] == {"id": "N2", "x": 5.0, "y": -0.0, "z": 3.0}
+        assert "elementReferenceVectors" not in migrated["metadata"]
+        assert migrated["metadata"]["coordinate_local_axis_migration"]["to"] == "fixed-canonical-xz-local-axes"
+        StructureModelV2.model_validate(migrated)
+
+    def test_untagged_genuine_3d_v1_is_preserved_as_historical_z_up(self):
+        data = {
+            "schema_version": "1.0.0",
+            "nodes": [
+                {"id": "N1", "x": 0.0, "y": 0.0, "z": 0.0},
+                {"id": "N2", "x": 1.0, "y": 2.0, "z": 3.0},
+            ],
+            "elements": [],
+        }
+        migrated = migrate_v1_to_v2(data)
+        assert migrated["nodes"] == data["nodes"]
+        assert migrated["coordinate_system"]["dimension"] == "3d"
+
 
 # ---------------------------------------------------------------------------
 # Cross-reference validation
 # ---------------------------------------------------------------------------
 
 class TestCrossReferenceValidation:
+    @pytest.mark.parametrize(
+        ("load", "message"),
+        [
+            ({"fz": -5.0}, "exactly one node or element"),
+            ({"node": "2", "element": "e1", "fz": -5.0}, "exactly one node or element"),
+            ({"node": "1", "nodeId": "2", "fz": -5.0}, "conflicting aliases"),
+        ],
+    )
+    def test_load_requires_exactly_one_unambiguous_target(self, load, message):
+        with pytest.raises(ValueError, match=message):
+            _minimal_model(load_cases=[LoadCaseV2(id="D", type="dead", loads=[load])])
+
     def test_unknown_node_reference(self):
         with pytest.raises(ValueError, match="unknown node"):
             _minimal_model(
@@ -429,6 +571,7 @@ class TestCrossReferenceValidation:
     def test_unknown_story_reference_element(self):
         with pytest.raises(ValueError, match="unknown story"):
             StructureModelV2(
+                coordinate_system=CoordinateSystemV2(**_coordinate_system()),
                 stories=[StoryDef(id="F1", height=3.0)],
                 nodes=[NodeV2(id="1", x=0, y=0, z=0), NodeV2(id="2", x=1, y=0, z=0)],
                 elements=[ElementV2(id="e1", nodes=["1", "2"], material="m1",
@@ -440,6 +583,7 @@ class TestCrossReferenceValidation:
     def test_unknown_load_case_in_combination(self):
         with pytest.raises(ValueError, match="unknown load case"):
             StructureModelV2(
+                coordinate_system=CoordinateSystemV2(**_coordinate_system()),
                 load_cases=[LoadCaseV2(id="D", type="dead")],
                 load_combinations=[LoadCombinationV2(id="C1", factors={"D": 1.2, "MISSING": 1.0})],
             )
@@ -447,6 +591,7 @@ class TestCrossReferenceValidation:
     def test_wall_opening_unknown_element(self):
         with pytest.raises(ValueError, match="unknown element"):
             StructureModelV2(
+                coordinate_system=CoordinateSystemV2(**_coordinate_system()),
                 nodes=[NodeV2(id="1", x=0, y=0, z=0), NodeV2(id="2", x=6, y=0, z=0)],
                 elements=[ElementV2(id="W1", type="wall", nodes=["1", "2"],
                                     material="m1", section="s1")],
@@ -460,6 +605,7 @@ class TestCrossReferenceValidation:
     def test_slab_opening_unknown_story(self):
         with pytest.raises(ValueError, match="unknown story"):
             StructureModelV2(
+                coordinate_system=CoordinateSystemV2(**_coordinate_system()),
                 stories=[StoryDef(id="F1", height=3.0)],
                 slab_openings=[SlabOpening(id="SO1", story_id="MISSING",
                                            x=2.0, y=2.0, width=1.0, depth=1.0)],
@@ -467,6 +613,7 @@ class TestCrossReferenceValidation:
 
     def test_valid_model_with_openings(self):
         model = StructureModelV2(
+            coordinate_system=CoordinateSystemV2(**_coordinate_system()),
             stories=[StoryDef(id="F1", height=3.0)],
             nodes=[NodeV2(id="1", x=0, y=0, z=0), NodeV2(id="2", x=6, y=0, z=0)],
             elements=[ElementV2(id="W1", type="wall", nodes=["1", "2"],

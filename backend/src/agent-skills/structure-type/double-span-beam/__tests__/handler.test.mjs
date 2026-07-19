@@ -50,7 +50,7 @@ describe('double-span-beam handler', () => {
     expect(model.nodes.map((node) => node.x)).toEqual([0, 4, 7.5, 11]);
     expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'distributed', wz: -10 }),
-      { node: '3', fz: -30 },
+      { node: '3', fz: -30, reference_frame: 'global' },
     ]));
   });
 });

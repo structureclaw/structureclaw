@@ -1,6 +1,13 @@
 {
   "schema_version": "2.0.0",
   "unit_system": "SI",
+  "coordinate_system": {
+    "semantics": "global-z-up",
+    "version": 1,
+    "dimension": "2d",
+    "plane": "xz",
+    "dof_order": ["ux", "uy", "uz", "rx", "ry", "rz"]
+  },
   "project": {
     "name": "某钢结构厂房框架",
     "code_standard": "GB50017-2017",

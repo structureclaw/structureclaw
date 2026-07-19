@@ -55,9 +55,13 @@ export function buildElementReferenceVectors(
     const dx = endX - startX;
     const dy = endY - startY;
     const dz = endZ - startZ;
-    const isColumn = Math.abs(dz) > 0 && Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9;
+    const length = Math.hypot(dx, dy, dz);
+    if (length <= 1e-9) {
+      continue;
+    }
+    const isNearlyVertical = Math.abs(dz / length) > 0.9;
 
-    result[elementId] = isColumn ? [1, 0, 0] : [0, 0, 1];
+    result[elementId] = isNearlyVertical ? [1, 0, 0] : [0, 0, 1];
   }
 
   return result;

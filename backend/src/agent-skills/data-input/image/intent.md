@@ -19,7 +19,8 @@ This skill activates when the user uploads or references an image file (photo, s
    - **Material labels**: C30, Q345, HRB400, steel grade markings
    - **Section callouts**: 300×600, HW400×200, circular pipe diameters
    - **Axis/grid**: structural bays and spacings
-4. Extract identified values and call `extract_draft_params`
+4. Resolve view semantics before mapping geometry. Image pixels are never structural coordinates: elevations/sections map horizontal/vertical dimensions to global X/Z with Y=0; plans map dimensions to global X/Y only with an explicit story Z; perspective depth is unknown unless dimensioned. Ask when the view or 2D/3D interpretation is ambiguous.
+5. Extract identified values and call `extract_draft_params`
 
 ## Image Quality Notes
 

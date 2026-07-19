@@ -1,6 +1,11 @@
 import type { AppLocale } from '../../../services/locale.js';
 import type { DraftState } from '../../../agent-runtime/types.js';
-import { STRUCTURAL_COORDINATE_SEMANTICS } from '../../../agent-runtime/coordinate-semantics.js';
+import {
+  assertCanonicalCoordinateModel,
+  buildStructuralCoordinateSystem,
+  STRUCTURAL_COORDINATE_CONTRACT_VERSION,
+  STRUCTURAL_COORDINATE_SEMANTICS,
+} from '../../../agent-runtime/coordinate-semantics.js';
 import { logger } from '../../../utils/logger.js';
 import type { StructureClawChatModel } from '../../../utils/llm.js';
 import { buildGenericModelPrompt, buildRetrySuffix } from './llm-model-prompt.js';
@@ -60,7 +65,8 @@ export async function tryBuildGenericModelWithLlm(
       }
 
       canonicalizeGenericModel(parsed);
-      stampCanonicalMetadata(parsed, state);
+      const dimension = stampCanonicalMetadata(parsed, state);
+      assertCanonicalCoordinateModel(parsed, dimension);
 
       logger.info({
         attempt: attempt + 1,
@@ -93,7 +99,6 @@ export async function tryBuildGenericModelWithLlm(
 function canonicalizeGenericModel(model: Record<string, unknown>): void {
   model.schema_version = '2.0.0';
   model.unit_system = 'SI';
-  normalizeLikely2DVerticalAxis(model);
   if (!Array.isArray(model.load_cases)) {
     return;
   }
@@ -109,108 +114,6 @@ function canonicalizeGenericModel(model: Record<string, unknown>): void {
         : [],
     };
   });
-}
-
-function normalizeLikely2DVerticalAxis(model: Record<string, unknown>): void {
-  if (!shouldSwapYzFor2DVerticalModel(model)) {
-    return;
-  }
-
-  const rawNodes = model.nodes;
-  if (!Array.isArray(rawNodes)) {
-    return;
-  }
-  rawNodes.forEach((node) => {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) {
-      return;
-    }
-    const record = node as Record<string, unknown>;
-    const y = coordinateValueOrZero(record.y);
-    const z = coordinateValueOrZero(record.z);
-    record.y = z;
-    record.z = y;
-    normalizeRestraintsVerticalAxis(record);
-  });
-
-  if (Array.isArray(model.load_cases)) {
-    model.load_cases.forEach((loadCase) => {
-      if (!loadCase || typeof loadCase !== 'object' || Array.isArray(loadCase)) {
-        return;
-      }
-      const loads = (loadCase as Record<string, unknown>).loads;
-      if (!Array.isArray(loads)) {
-        return;
-      }
-      loads.forEach(normalizeLoadVerticalAxis);
-    });
-  }
-
-  const metadata = (
-    model.metadata && typeof model.metadata === 'object' && !Array.isArray(model.metadata)
-      ? model.metadata as Record<string, unknown>
-      : {}
-  );
-  metadata.coordinateRepair = 'swapped-y-z-for-2d-vertical-model';
-  model.metadata = metadata;
-}
-
-function shouldSwapYzFor2DVerticalModel(model: Record<string, unknown>): boolean {
-  if (!Array.isArray(model.nodes)) {
-    return false;
-  }
-
-  const nodes = model.nodes.filter((node): node is Record<string, unknown> => (
-    !!node && typeof node === 'object' && !Array.isArray(node)
-  ));
-  if (nodes.length < 2) {
-    return false;
-  }
-
-  const yValues = nodes.map((node) => coordinateValueOrZero(node.y)).filter((value): value is number => value !== null);
-  const zValues = nodes.map((node) => coordinateValueOrZero(node.z)).filter((value): value is number => value !== null);
-  if (yValues.length !== nodes.length || zValues.length !== nodes.length) {
-    return false;
-  }
-
-  const ySpan = valueSpan(yValues);
-  const zSpan = valueSpan(zValues);
-  return ySpan > 0.1 && zSpan < 1e-6;
-}
-
-function normalizeLoadVerticalAxis(load: unknown): void {
-  if (!load || typeof load !== 'object' || Array.isArray(load)) {
-    return;
-  }
-  const record = load as Record<string, unknown>;
-  moveVerticalComponentIfNeeded(record, 'fy', 'fz');
-  moveVerticalComponentIfNeeded(record, 'wy', 'wz');
-  moveVerticalComponentIfNeeded(record, 'qy', 'qz');
-  moveVerticalComponentIfNeeded(record, 'py', 'pz');
-  moveVerticalComponentIfNeeded(record, 'mz', 'my');
-}
-
-function normalizeRestraintsVerticalAxis(record: Record<string, unknown>): void {
-  const restraints = record.restraints;
-  if (!Array.isArray(restraints) || restraints.length !== 6) {
-    return;
-  }
-  swapArrayItems(restraints, 1, 2);
-  swapArrayItems(restraints, 4, 5);
-}
-
-function swapArrayItems(values: unknown[], left: number, right: number): void {
-  const value = values[left];
-  values[left] = values[right];
-  values[right] = value;
-}
-
-function moveVerticalComponentIfNeeded(record: Record<string, unknown>, yKey: string, zKey: string): void {
-  const yValue = toFiniteNumber(record[yKey]);
-  const zValue = toFiniteNumber(record[zKey]);
-  if (yValue !== null && Math.abs(yValue) > 1e-9 && (zValue === null || Math.abs(zValue) <= 1e-9)) {
-    record[zKey] = record[yKey];
-    record[yKey] = typeof record[yKey] === 'string' ? '0' : 0;
-  }
 }
 
 function normalizeLoadRecord(load: unknown): unknown {
@@ -244,6 +147,9 @@ function normalizeLoadRecord(load: unknown): unknown {
   delete record.forceUnit;
   delete record.force_unit;
   delete record.units;
+  if (record.reference_frame === undefined) {
+    record.reference_frame = 'global';
+  }
 
   return record;
 }
@@ -333,7 +239,7 @@ function tryParseJson(content: string): Record<string, unknown> | null {
   }
 }
 
-function stampCanonicalMetadata(model: Record<string, unknown>, state: DraftState): void {
+function stampCanonicalMetadata(model: Record<string, unknown>, state: DraftState): '2d' | '3d' {
   const nextMetadata = (
     model.metadata && typeof model.metadata === 'object' && !Array.isArray(model.metadata)
       ? { ...(model.metadata as Record<string, unknown>) }
@@ -341,9 +247,34 @@ function stampCanonicalMetadata(model: Record<string, unknown>, state: DraftStat
   );
 
   nextMetadata.coordinateSemantics = STRUCTURAL_COORDINATE_SEMANTICS;
-  if (nextMetadata.frameDimension !== '2d' && nextMetadata.frameDimension !== '3d') {
-    nextMetadata.frameDimension = inferFrameDimension(model);
+  nextMetadata.coordinateContractVersion = STRUCTURAL_COORDINATE_CONTRACT_VERSION;
+  const declaredCoordinateSystem = (
+    model.coordinate_system && typeof model.coordinate_system === 'object' && !Array.isArray(model.coordinate_system)
+      ? model.coordinate_system as Record<string, unknown>
+      : {}
+  );
+  const declaredDimension = declaredCoordinateSystem.dimension;
+  if (declaredDimension !== '2d' && declaredDimension !== '3d') {
+    throw new Error('Generic V2 models must explicitly declare coordinate_system.dimension');
   }
+  const expectedCoordinateSystem = buildStructuralCoordinateSystem(declaredDimension);
+  if (
+    declaredCoordinateSystem.semantics !== expectedCoordinateSystem.semantics
+    || declaredCoordinateSystem.version !== expectedCoordinateSystem.version
+    || declaredCoordinateSystem.plane !== expectedCoordinateSystem.plane
+    || !Array.isArray(declaredCoordinateSystem.dof_order)
+    || declaredCoordinateSystem.dof_order.length !== expectedCoordinateSystem.dof_order.length
+    || declaredCoordinateSystem.dof_order.some(
+      (value, index) => value !== expectedCoordinateSystem.dof_order[index]
+    )
+  ) {
+    throw new Error('Generic V2 models must provide the complete canonical coordinate_system contract');
+  }
+  if (state.frameDimension && state.frameDimension !== declaredDimension) {
+    throw new Error('Generic V2 coordinate_system.dimension conflicts with the confirmed frameDimension');
+  }
+  const dimension = declaredDimension;
+  nextMetadata.frameDimension = dimension;
   if (
     (typeof nextMetadata.inferredType !== 'string' || nextMetadata.inferredType.trim().length === 0)
     && typeof state.inferredType === 'string'
@@ -355,38 +286,9 @@ function stampCanonicalMetadata(model: Record<string, unknown>, state: DraftStat
     nextMetadata.source = 'generic-llm-draft';
   }
 
+  model.coordinate_system = buildStructuralCoordinateSystem(dimension);
   model.metadata = nextMetadata;
-}
-
-function inferFrameDimension(model: Record<string, unknown>): '2d' | '3d' {
-  const nodes = Array.isArray(model.nodes) ? model.nodes : [];
-  const yValues = new Set<string>();
-  const zValues = new Set<string>();
-
-  nodes.forEach((node) => {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) {
-      return;
-    }
-    const record = node as Record<string, unknown>;
-    const y = toFiniteNumber(record.y);
-    const z = toFiniteNumber(record.z);
-    if (y !== null) {
-      yValues.add(y.toFixed(6));
-    }
-    if (z !== null) {
-      zValues.add(z.toFixed(6));
-    }
-  });
-
-  return yValues.size > 1 && zValues.size > 1 ? '3d' : '2d';
-}
-
-function valueSpan(values: number[]): number {
-  return Math.max(...values) - Math.min(...values);
-}
-
-function coordinateValueOrZero(value: unknown): number | null {
-  return value === undefined || value === null ? 0 : toFiniteNumber(value);
+  return dimension;
 }
 
 function toFiniteNumber(value: unknown): number | null {

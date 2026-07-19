@@ -1,5 +1,9 @@
 import {
+  FIXED_RESTRAINT,
+  PINNED_RESTRAINT,
+  ROLLER_X_RESTRAINT,
   STRUCTURAL_COORDINATE_SEMANTICS,
+  withCanonicalCoordinateContract,
 } from './coordinate-semantics.js';
 import { buildElementReferenceVectors } from './reference-vectors.js';
 import type {
@@ -12,9 +16,9 @@ import type {
 
 function buildFixedRestraint(baseSupport: FrameBaseSupportType): boolean[] {
   if (baseSupport === 'pinned') {
-    return [true, true, true, false, false, false];
+    return [...PINNED_RESTRAINT];
   }
-  return [true, true, true, true, true, true];
+  return [...FIXED_RESTRAINT];
 }
 
 function accumulateCoordinates(lengths: number[]): number[] {
@@ -267,9 +271,9 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
 }
 
 function buildBeamNodes(length: number, supportType: DraftSupportType, loadPositionM?: number) {
-  const fixedRestraint = [true, true, true, true, true, true] as const;
-  const pinnedRestraint = [true, true, true, true, true, false] as const;
-  const rollerRestraint = [false, true, true, true, true, false] as const;
+  const fixedRestraint = FIXED_RESTRAINT;
+  const pinnedRestraint = PINNED_RESTRAINT;
+  const rollerRestraint = ROLLER_X_RESTRAINT;
   let leftRestraint: boolean[] = [...fixedRestraint];
   let rightRestraint: boolean[] | undefined;
 
@@ -304,8 +308,8 @@ function buildBeamNodes(length: number, supportType: DraftSupportType, loadPosit
 }
 
 function buildOverhangingBeamNodes(simpleSpan: number, overhangLength: number) {
-  const pinnedRestraint = [true, true, true, true, true, false] as const;
-  const rollerRestraint = [false, true, true, true, true, false] as const;
+  const pinnedRestraint = PINNED_RESTRAINT;
+  const rollerRestraint = ROLLER_X_RESTRAINT;
   const totalLength = simpleSpan + overhangLength;
 
   return {
@@ -371,8 +375,8 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
   const load = state.loadKN!;
   const topology = getTrussTopology(state);
   const panelLength = span / panelCount;
-  const fixed = [true, true, true, true, true, true];
-  const roller = [false, true, true, true, true, true];
+  const fixed = [...PINNED_RESTRAINT];
+  const roller = [...ROLLER_X_RESTRAINT];
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
 
@@ -702,9 +706,9 @@ function beamSupportCoordinates(state: DraftState, supportType: DraftSupportType
 }
 
 function beamSupportRestraint(supportType: DraftSupportType, supportIndex: number): boolean[] | undefined {
-  const fixed = [true, true, true, true, true, true];
-  const pinned = [true, true, true, true, true, false];
-  const roller = [false, true, true, true, true, false];
+  const fixed = [...FIXED_RESTRAINT];
+  const pinned = [...PINNED_RESTRAINT];
+  const roller = [...ROLLER_X_RESTRAINT];
 
   if (supportType === 'cantilever') {
     return supportIndex === 0 ? fixed : undefined;
@@ -917,8 +921,8 @@ function buildContinuousBeamModel(state: DraftState, metadata: Record<string, un
     ...supportCoordinates,
     ...(pointLoadX !== undefined ? [pointLoadX] : []),
   ])).sort((left, right) => left - right);
-  const pinned = [true, true, true, true, true, false];
-  const roller = [false, true, true, true, true, false];
+  const pinned = [...PINNED_RESTRAINT];
+  const roller = [...ROLLER_X_RESTRAINT];
   const nodes = coordinates.map((x, index) => {
     const supportIndex = supportCoordinates.findIndex((supportX) => Math.abs(supportX - x) < 1e-9);
     const node: Record<string, unknown> = { id: `${index + 1}`, x, y: 0, z: 0 };
@@ -1125,5 +1129,9 @@ function buildBaseModel(state: DraftState): Record<string, unknown> {
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
-  return attachSeismicMemberEvidence(buildBaseModel(state), state);
+  const dimension = state.inferredType === 'frame' && state.frameDimension === '3d' ? '3d' : '2d';
+  return withCanonicalCoordinateContract(
+    attachSeismicMemberEvidence(buildBaseModel(state), state),
+    dimension,
+  );
 }

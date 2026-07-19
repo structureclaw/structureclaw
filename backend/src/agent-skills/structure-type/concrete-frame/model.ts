@@ -1,5 +1,6 @@
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
+  withCanonicalCoordinateContract,
 } from '../../../agent-runtime/coordinate-semantics.js';
 import { buildElementReferenceVectors } from '../../../agent-runtime/reference-vectors.js';
 import type {
@@ -329,6 +330,7 @@ export function resolveSectionProps(rawSection: string, G: number): SectionProps
 type ConcreteFrameModel = {
   schema_version: '2.0.0';
   unit_system: 'SI';
+  coordinate_system?: Record<string, unknown>;
   project: Record<string, unknown>;
   structure_system: Record<string, unknown>;
   site_seismic?: Record<string, unknown>;
@@ -488,17 +490,17 @@ function n3dId(storyIdx: number, xIdx: number, yIdx: number): string {
 }
 
 function buildStoryFloorLoadFields(deadLoad: number | undefined, liveLoad: number | undefined): Record<string, unknown> {
-  const roundedDeadLoad = deadLoad ? Math.round(deadLoad * 100) / 100 : undefined;
-  const roundedLiveLoad = liveLoad ? Math.round(liveLoad * 100) / 100 : undefined;
+  const exactDeadLoad = deadLoad && Number.isFinite(deadLoad) ? deadLoad : undefined;
+  const exactLiveLoad = liveLoad && Number.isFinite(liveLoad) ? liveLoad : undefined;
   const floorLoads = [
-    ...(roundedDeadLoad ? [{ type: 'dead', value: roundedDeadLoad }] : []),
-    ...(roundedLiveLoad ? [{ type: 'live', value: roundedLiveLoad }] : []),
+    ...(exactDeadLoad ? [{ type: 'dead', value: exactDeadLoad }] : []),
+    ...(exactLiveLoad ? [{ type: 'live', value: exactLiveLoad }] : []),
   ];
 
   return {
     ...(floorLoads.length ? { floor_loads: floorLoads } : {}),
-    ...(roundedDeadLoad ? { dead_load: roundedDeadLoad } : {}),
-    ...(roundedLiveLoad ? { live_load: roundedLiveLoad } : {}),
+    ...(exactDeadLoad ? { dead_load: exactDeadLoad } : {}),
+    ...(exactLiveLoad ? { live_load: exactLiveLoad } : {}),
   };
 }
 
@@ -1411,7 +1413,7 @@ export function buildConcreteFrameModel(
       };
     }
 
-    return model3d;
+    return withCanonicalCoordinateContract(model3d, '3d') as ConcreteFrameModel;
   }
 
   const bayCount = state.bayCount;
@@ -1454,5 +1456,5 @@ export function buildConcreteFrameModel(
     };
   }
 
-  return model2d;
+  return withCanonicalCoordinateContract(model2d, '2d') as ConcreteFrameModel;
 }

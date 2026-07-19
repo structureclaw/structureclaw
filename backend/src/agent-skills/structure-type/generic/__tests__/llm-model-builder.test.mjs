@@ -24,13 +24,20 @@ describe('generic LLM model builder', () => {
     expect(prompt).not.toContain('-10000');
   });
 
-  test('canonicalizes legacy schema and explicit newton load units from LLM output', async () => {
+  test('canonicalizes explicit newton load units from typed LLM output', async () => {
     const fakeLlm = {
       async invoke() {
         return {
           content: JSON.stringify({
             schema_version: '1.0.0',
             unit_system: 'SI',
+            coordinate_system: {
+              semantics: 'global-z-up',
+              version: 1,
+              dimension: '2d',
+              plane: 'xz',
+              dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+            },
             nodes: [
               { id: 'N1', x: 0, y: 0, z: 0 },
               { id: 'N2', x: 12, y: 0, z: 0 },
@@ -46,7 +53,6 @@ describe('generic LLM model builder', () => {
                   { type: 'nodal_force', node: 'N2', fz: -230000, unit: 'N' },
                   { type: 'nodal_force', node: 'N2', fz: -230, unit: 'N' },
                   { type: 'line_load', element: 'E1', wz: -20000, forceUnit: 'npermeter', units: 'N/m' },
-                  { type: 'nodal_force', node: 'N1', fz: '   ', unit: 'N' },
                 ],
               },
             ],
@@ -84,21 +90,23 @@ describe('generic LLM model builder', () => {
     });
     expect(model.load_cases[0].loads[2].forceUnit).toBeUndefined();
     expect(model.load_cases[0].loads[2].units).toBeUndefined();
-    expect(model.load_cases[0].loads[3]).toMatchObject({
-      type: 'nodal',
-      node: 'N1',
-      fz: '   ',
-      unit: 'kN',
-    });
+    expect(model.load_cases[0].loads).toHaveLength(3);
   });
 
-  test('repairs likely 2D y-up coordinates without moving valid z loads', async () => {
+  test('rejects likely 2D y-up coordinates instead of silently swapping axes', async () => {
     const fakeLlm = {
       async invoke() {
         return {
           content: JSON.stringify({
             schema_version: '2.0.0',
             unit_system: 'SI',
+            coordinate_system: {
+              semantics: 'global-z-up',
+              version: 1,
+              dimension: '2d',
+              plane: 'xz',
+              dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+            },
             nodes: [
               { id: 'N1', x: 0, y: 0, z: 0, restraints: [true, true, false, false, false, true] },
               { id: 'N2', x: 6, y: 0, z: 0 },
@@ -134,18 +142,6 @@ describe('generic LLM model builder', () => {
       'en',
     );
 
-    expect(model.nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'N1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] }),
-      expect.objectContaining({ id: 'N3', x: 0, y: 0, z: 4 }),
-      expect.objectContaining({ id: 'N4', x: 6, y: 0, z: 4 }),
-    ]));
-    expect(model.load_cases[0].loads[0]).toMatchObject({ fx: 50, fy: 0, fz: 0 });
-    expect(model.load_cases[0].loads[1]).toMatchObject({ wy: 0, wz: -8 });
-    expect(model.load_cases[0].loads[2]).toMatchObject({ fy: 0, fz: -10 });
-    expect(model.load_cases[0].loads[3]).toMatchObject({ mz: 0, my: 5 });
-    expect(model.metadata).toMatchObject({
-      coordinateSemantics: 'global-z-up',
-      coordinateRepair: 'swapped-y-z-for-2d-vertical-model',
-    });
+    expect(model).toBeUndefined();
   });
 });
