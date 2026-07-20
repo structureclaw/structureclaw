@@ -206,6 +206,17 @@ def build_continuous_beam_floor_model() -> StructureModelV2:
     return StructureModelV2.model_validate(payload)
 
 
+def piecewise_resultant(load: dict, element_length: float, component: str = "wz") -> float:
+    points = load["points"]
+    return sum(
+        0.5
+        * (float(first.get(component, 0.0)) + float(second.get(component, 0.0)))
+        * (float(second["position"]) - float(first["position"]))
+        * element_length
+        for first, second in zip(points, points[1:])
+    )
+
+
 class FloorLoadExpansionTest(unittest.TestCase):
     def test_selects_planar_frame_for_column_and_beam_elements(self) -> None:
         analyzer = StaticAnalyzer(build_planar_column_beam_frame_model())
@@ -235,17 +246,69 @@ class FloorLoadExpansionTest(unittest.TestCase):
         self.assertEqual(len(loads), 4)
         self.assertTrue(all(load["type"] == "distributed" for load in loads))
         self.assertEqual({load["element"] for load in loads}, {"X0", "X1", "Y0", "Y1"})
-        self.assertTrue(all(load["wz"] < 0.0 for load in loads))
-        self.assertAlmostEqual(sum(-load["wz"] * 6.0 for load in loads), 216.0)
+        self.assertTrue(all(load["distribution"] == "piecewise_linear" for load in loads))
+        self.assertEqual({load["profile"] for load in loads}, {"triangular"})
+        self.assertAlmostEqual(sum(-piecewise_resultant(load, 6.0) for load in loads), 216.0)
         transfer = analyzer._floor_load_transfer_summary()
         self.assertIsNotNone(transfer)
         self.assertEqual(transfer["requestedMode"], "auto_code_cn")
         self.assertEqual(transfer["effectiveMode"], "two_way_slab")
-        self.assertEqual(transfer["methodZh"], "双向板传至支承梁并折算为等效均布梁荷载")
+        self.assertEqual(transfer["methodZh"], "双向板按三角形/梯形荷载传至支承梁")
         self.assertEqual(transfer["items"][0]["effectiveMode"], "two_way_slab")
         self.assertIn("GB 50010", transfer["items"][0]["designCodeRule"])
-        self.assertEqual(transfer["items"][0]["methodZh"], "双向板传至支承梁并折算为等效均布梁荷载")
+        self.assertEqual(transfer["items"][0]["methodZh"], "双向板按三角形/梯形荷载传至支承梁")
         self.assertIn("按双向板计算", transfer["items"][0]["designCodeRuleZh"])
+
+    def test_two_way_rectangular_panel_uses_trapezoids_on_long_edges_and_triangles_on_short_edges(self) -> None:
+        analyzer = StaticAnalyzer(build_model(include_floor_beams=True, span_x=4.0, span_y=6.0))
+
+        loads = analyzer._collect_nodal_loads({})
+        by_element = {load["element"]: load for load in loads}
+
+        self.assertEqual({by_element[element]["profile"] for element in ("X0", "X1")}, {"triangular"})
+        self.assertEqual({by_element[element]["profile"] for element in ("Y0", "Y1")}, {"trapezoidal"})
+        self.assertEqual(
+            [round(point["position"], 6) for point in by_element["Y0"]["points"]],
+            [0.0, 0.333333, 0.666667, 1.0],
+        )
+        self.assertEqual(
+            [round(point["position"], 6) for point in by_element["X0"]["points"]],
+            [0.0, 0.5, 1.0],
+        )
+        total_load = sum(
+            -piecewise_resultant(load, 4.0 if load["element"].startswith("X") else 6.0)
+            for load in loads
+        )
+        self.assertAlmostEqual(total_load, 6.0 * 4.0 * 6.0)
+
+    def test_piecewise_linear_triangle_produces_exact_consistent_end_actions(self) -> None:
+        analyzer = StaticAnalyzer(build_model(include_floor_beams=True))
+        element = analyzer.elements["X0"]
+        load = {
+            "type": "distributed",
+            "element": "X0",
+            "distribution": "piecewise_linear",
+            "reference_frame": "element-local",
+            "points": [
+                {"position": 0.0, "wy": 0.0},
+                {"position": 0.5, "wy": -12.0},
+                {"position": 1.0, "wy": 0.0},
+            ],
+        }
+
+        point_loads = analyzer._piecewise_linear_element_point_loads(load, element)
+        equivalent = sum(
+            (
+                analyzer._build_3d_point_load_vector(px, py, pz, position, 6.0)
+                for position, px, py, pz in point_loads
+            ),
+            start=analyzer._build_3d_point_load_vector(0.0, 0.0, 0.0, 0.5, 6.0),
+        )
+
+        self.assertAlmostEqual(equivalent[1], -18.0)
+        self.assertAlmostEqual(equivalent[5], -22.5)
+        self.assertAlmostEqual(equivalent[7], -18.0)
+        self.assertAlmostEqual(equivalent[11], 22.5)
 
     def test_auto_code_cn_uses_one_way_slab_for_long_panel(self) -> None:
         analyzer = StaticAnalyzer(build_model(include_floor_beams=True, span_x=3.0, span_y=12.0))
@@ -273,7 +336,7 @@ class FloorLoadExpansionTest(unittest.TestCase):
         self.assertEqual(len(distributed_loads), 4)
         self.assertEqual(len(nodal_loads), 4)
         self.assertEqual({load["node"] for load in nodal_loads}, {"U1", "U2", "U3", "U4"})
-        self.assertAlmostEqual(sum(-load["wz"] * 6.0 for load in distributed_loads), 216.0)
+        self.assertAlmostEqual(sum(-piecewise_resultant(load, 6.0) for load in distributed_loads), 216.0)
         self.assertAlmostEqual(sum(-load["fz"] for load in nodal_loads), 216.0)
         transfer = analyzer._floor_load_transfer_summary()
         self.assertIsNotNone(transfer)

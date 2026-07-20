@@ -852,14 +852,14 @@ class StaticAnalyzer:
                 for c_idx in range(12):
                     K[dofs[r], dofs[c_idx]] += k_global[r, c_idx]
 
-            local_loads = [
-                self._distributed_load_local_components(load, elem)
-                for load in element_distributed_loads.get(elem.id, [])
-            ]
-            wx = sum(item[0] for item in local_loads)
-            wy = sum(item[1] for item in local_loads)
-            wz = sum(item[2] for item in local_loads)
-            f_local_dist = self._build_3d_uniform_load_vector(wx, wy, wz, L)
+            f_local_dist = np.zeros(12, dtype=float)
+            for load in element_distributed_loads.get(elem.id, []):
+                if load.get('distribution') == 'piecewise_linear':
+                    for position, px, py, pz in self._piecewise_linear_element_point_loads(load, elem):
+                        f_local_dist += self._build_3d_point_load_vector(px, py, pz, position, L)
+                    continue
+                wx, wy, wz = self._distributed_load_local_components(load, elem)
+                f_local_dist += self._build_3d_uniform_load_vector(wx, wy, wz, L)
             if np.any(np.abs(f_local_dist) > 0.0):
                 F[dofs] += T.T @ f_local_dist
 
@@ -1148,6 +1148,101 @@ class StaticAnalyzer:
             f[8] += wz * L / 2.0
             f[10] += wz * (L ** 2) / 12.0
         return f
+
+    def _build_3d_point_load_vector(
+        self,
+        px: float,
+        py: float,
+        pz: float,
+        position: float,
+        length: float,
+    ) -> np.ndarray:
+        """Consistent local nodal load vector for a beam point load."""
+        xi = float(position)
+        if xi < 0.0 or xi > 1.0:
+            raise ValueError("Beam point-load position must be within [0, 1]")
+
+        n1 = 1.0 - 3.0 * xi ** 2 + 2.0 * xi ** 3
+        n2 = length * (xi - 2.0 * xi ** 2 + xi ** 3)
+        n3 = 3.0 * xi ** 2 - 2.0 * xi ** 3
+        n4 = length * (-xi ** 2 + xi ** 3)
+
+        f = np.zeros(12, dtype=float)
+        f[0] += px * (1.0 - xi)
+        f[6] += px * xi
+        f[1] += py * n1
+        f[5] += py * n2
+        f[7] += py * n3
+        f[11] += py * n4
+        f[2] += pz * n1
+        f[4] += -pz * n2
+        f[8] += pz * n3
+        f[10] += -pz * n4
+        return f
+
+    def _piecewise_linear_element_point_loads(
+        self,
+        load: Dict[str, Any],
+        elem: Any,
+    ) -> List[Tuple[float, float, float, float]]:
+        """Integrate a piecewise-linear member load with exact three-point quadrature."""
+        raw_points = load.get('points')
+        if not isinstance(raw_points, list) or len(raw_points) < 2:
+            raise ValueError("Piecewise-linear member loads require at least two points")
+
+        points = sorted(raw_points, key=lambda point: self._to_float(point.get('position'), 0.0))
+        positions = [self._to_float(point.get('position'), 0.0) for point in points]
+        if positions[0] < 0.0 or positions[-1] > 1.0:
+            raise ValueError("Piecewise-linear member-load positions must be within [0, 1]")
+
+        start = self.nodes[elem.nodes[0]]
+        end = self.nodes[elem.nodes[1]]
+        length = float(np.linalg.norm(np.array([
+            end.x - start.x,
+            end.y - start.y,
+            end.z - start.z,
+        ], dtype=float)))
+        if length <= 0.0:
+            raise ValueError(f"Element '{elem.id}' has zero length")
+
+        gauss_locations = (-math.sqrt(3.0 / 5.0), 0.0, math.sqrt(3.0 / 5.0))
+        gauss_weights = (5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0)
+        point_loads: List[Tuple[float, float, float, float]] = []
+
+        for first, second in zip(points, points[1:]):
+            first_position = self._to_float(first.get('position'), 0.0)
+            second_position = self._to_float(second.get('position'), 0.0)
+            if second_position <= first_position:
+                raise ValueError("Piecewise-linear member-load positions must be strictly increasing")
+
+            midpoint = 0.5 * (first_position + second_position)
+            half_span = 0.5 * (second_position - first_position)
+            for gauss_location, gauss_weight in zip(gauss_locations, gauss_weights):
+                position = midpoint + half_span * gauss_location
+                ratio = (position - first_position) / (second_position - first_position)
+                interpolated = {
+                    component: (
+                        self._to_float(first.get(component, 0.0), 0.0) * (1.0 - ratio)
+                        + self._to_float(second.get(component, 0.0), 0.0) * ratio
+                    )
+                    for component in ('wx', 'wy', 'wz')
+                }
+                local_components = self._distributed_load_local_components(
+                    {
+                        **interpolated,
+                        'reference_frame': load.get('reference_frame', 'global'),
+                    },
+                    elem,
+                )
+                scale = gauss_weight * half_span * length
+                point_loads.append((
+                    position,
+                    local_components[0] * scale,
+                    local_components[1] * scale,
+                    local_components[2] * scale,
+                ))
+
+        return point_loads
 
     def _collect_nodal_loads(self, parameters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Collect standardized loads.
@@ -1492,7 +1587,7 @@ class StaticAnalyzer:
         labels = {
             'node_tributary': 'Node tributary-area equivalent nodal load',
             'one_way_slab': 'One-way slab load transfer to supporting beams',
-            'two_way_slab': 'Two-way slab load transfer with equivalent uniform beam loads',
+            'two_way_slab': 'Two-way slab load transfer with triangular/trapezoidal beam loads',
             'auto_code_cn': 'Automatic GB 50010 slab classification and beam load transfer',
             'mixed': 'Mixed floor load transfer methods',
             'disabled': 'Floor load transfer disabled',
@@ -1503,7 +1598,7 @@ class StaticAnalyzer:
         labels = {
             'node_tributary': '节点影响面积等效节点荷载',
             'one_way_slab': '单向板传至支承梁',
-            'two_way_slab': '双向板传至支承梁并折算为等效均布梁荷载',
+            'two_way_slab': '双向板按三角形/梯形荷载传至支承梁',
             'auto_code_cn': '按 GB 50010 自动判别单向/双向板并传至梁',
             'mixed': '混合楼面荷载传递方法',
             'disabled': '楼面荷载传递已关闭',
@@ -1575,10 +1670,16 @@ class StaticAnalyzer:
             a = (x1, y1, z)
             b = (x2, y2, z)
             if self._segment_contains_points(p_start, p_end, a, b):
+                direction = tuple(p_end[idx] - p_start[idx] for idx in range(3))
+                length_sq = sum(value * value for value in direction)
+                first_fraction = sum((a[idx] - p_start[idx]) * direction[idx] for idx in range(3)) / length_sq
+                second_fraction = sum((b[idx] - p_start[idx]) * direction[idx] for idx in range(3)) / length_sq
                 return {
                     'id': str(elem.id),
                     'segmentLength': self._point_distance(a, b),
                     'elementLength': self._point_distance(p_start, p_end),
+                    'startFraction': max(0.0, min(first_fraction, second_fraction)),
+                    'endFraction': min(1.0, max(first_fraction, second_fraction)),
                 }
         return None
 
@@ -1667,11 +1768,11 @@ class StaticAnalyzer:
         }
         if mode == 'two_way_slab':
             trace_item['note'] = (
-                'Two-way slab line loads are converted to equivalent uniform beam loads '
-                'for the OpenSees beamUniform load interface.'
+                'Two-way slab triangular and trapezoidal line loads are integrated with '
+                'three-point Gaussian beam loads, preserving their consistent end actions.'
             )
             trace_item['noteEn'] = trace_item['note']
-            trace_item['noteZh'] = '双向板分配到边梁的线荷载会折算为 OpenSees beamUniform 等效均布梁荷载。'
+            trace_item['noteZh'] = '双向板三角形和梯形线荷载采用三点高斯梁荷载积分，保持一致节点力和端弯矩。'
         self._append_floor_load_trace_item(trace_item)
         return loads
 
@@ -1743,22 +1844,67 @@ class StaticAnalyzer:
 
         a = min(lx, ly)
         b = max(lx, ly)
-        long_edge_line_load = intensity * a * (0.5 - a / (4.0 * b))
-        short_edge_line_load = intensity * a / 4.0
+        peak_line_load = intensity * a / 2.0
 
         if lx <= ly:
             return [
-                self._distributed_gravity_load(edges['x_min'], long_edge_line_load, panel),
-                self._distributed_gravity_load(edges['x_max'], long_edge_line_load, panel),
-                self._distributed_gravity_load(edges['y_min'], short_edge_line_load, panel),
-                self._distributed_gravity_load(edges['y_max'], short_edge_line_load, panel),
+                self._piecewise_linear_gravity_load(edges['x_min'], peak_line_load, panel, a / 2.0),
+                self._piecewise_linear_gravity_load(edges['x_max'], peak_line_load, panel, a / 2.0),
+                self._piecewise_linear_gravity_load(edges['y_min'], peak_line_load, panel),
+                self._piecewise_linear_gravity_load(edges['y_max'], peak_line_load, panel),
             ]
         return [
-            self._distributed_gravity_load(edges['y_min'], long_edge_line_load, panel),
-            self._distributed_gravity_load(edges['y_max'], long_edge_line_load, panel),
-            self._distributed_gravity_load(edges['x_min'], short_edge_line_load, panel),
-            self._distributed_gravity_load(edges['x_max'], short_edge_line_load, panel),
+            self._piecewise_linear_gravity_load(edges['y_min'], peak_line_load, panel, a / 2.0),
+            self._piecewise_linear_gravity_load(edges['y_max'], peak_line_load, panel, a / 2.0),
+            self._piecewise_linear_gravity_load(edges['x_min'], peak_line_load, panel),
+            self._piecewise_linear_gravity_load(edges['x_max'], peak_line_load, panel),
         ]
+
+    def _piecewise_linear_gravity_load(
+        self,
+        edge: Any,
+        peak_line_load: float,
+        panel: Dict[str, Any],
+        ramp_length: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        edge_data = edge if isinstance(edge, dict) else {'id': str(edge)}
+        element_id = str(edge_data.get('id', ''))
+        segment_length = self._to_float(edge_data.get('segmentLength', 0.0), 0.0)
+        start_fraction = self._to_float(edge_data.get('startFraction', 0.0), 0.0)
+        end_fraction = self._to_float(edge_data.get('endFraction', 1.0), 1.0)
+        if segment_length <= 0.0 or end_fraction <= start_fraction:
+            raise ValueError(f"Panel {panel.get('id')}: invalid supporting-beam segment for '{element_id}'")
+
+        relative_positions = [0.0, 0.5, 1.0]
+        profile = 'triangular'
+        if ramp_length is not None:
+            ramp_ratio = min(max(float(ramp_length) / segment_length, 0.0), 0.5)
+            if ramp_ratio < 0.5 - 1e-12:
+                relative_positions = [0.0, ramp_ratio, 1.0 - ramp_ratio, 1.0]
+                profile = 'trapezoidal'
+
+        points = []
+        for index, relative_position in enumerate(relative_positions):
+            at_edge = index == 0 or index == len(relative_positions) - 1
+            points.append({
+                'position': start_fraction + (end_fraction - start_fraction) * relative_position,
+                'wx': 0.0,
+                'wy': 0.0,
+                'wz': 0.0 if at_edge else -peak_line_load,
+            })
+
+        return {
+            'type': 'distributed',
+            'element': element_id,
+            'distribution': 'piecewise_linear',
+            'profile': profile,
+            'points': points,
+            'reference_frame': 'global',
+            'source': 'storyFloorLoad',
+            'panel': panel.get('id'),
+            'tributarySegmentLength': segment_length,
+            'elementLength': self._to_float(edge_data.get('elementLength', segment_length), segment_length),
+        }
 
     def _distributed_gravity_load(self, edge: Any, line_load: float, panel: Dict[str, Any]) -> Dict[str, Any]:
         edge_data = edge if isinstance(edge, dict) else {'id': str(edge)}

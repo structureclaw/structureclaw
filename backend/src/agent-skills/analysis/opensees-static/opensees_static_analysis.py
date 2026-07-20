@@ -388,6 +388,19 @@ class OpenSeesStaticExecutor:
                 elem = self.analyzer.elements.get(str(load['element']))
                 if elem is None:
                     raise ValueError(f"Unknown element '{load['element']}' in distributed load")
+                if load.get('distribution') == 'piecewise_linear':
+                    for position, px, py, pz in self.analyzer._piecewise_linear_element_point_loads(load, elem):
+                        ops.eleLoad(
+                            '-ele',
+                            self.analyzer._ops_element_tag(load['element']),
+                            '-type',
+                            '-beamPoint',
+                            py,
+                            pz,
+                            position,
+                            px,
+                        )
+                    continue
                 wx, wy, wz = self.analyzer._distributed_load_local_components(load, elem)
                 ops.eleLoad(
                     '-ele',
