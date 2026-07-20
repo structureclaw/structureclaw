@@ -723,6 +723,36 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             )
         v2_node_floor[v2_id] = matches[0]
 
+    # JWSCYCLE assigns new entity IDs to copied standard floors.  Refresh the
+    # converter mapping only when the extracted result IDs show that renumbering
+    # actually occurred; reused standard floors retain the original IDs.
+    floor_load_mapping = converter_mappings.get("floor_load_mapping", [])
+    copied_natural_floors = {
+        index + 1
+        for index, item in enumerate(floor_load_mapping)
+        if int(item.get("stand_floor_index", 1)) > 1
+    }
+    extracted_node_keys = {
+        key
+        for case_values in extracted.get("case_node_disps", {}).values()
+        for key in case_values
+    }
+    needs_result_mapping_refresh = any(
+        {pmid for pmid, result_floor in extracted_node_keys if result_floor == floor}
+        != {
+            int(v2_to_pm[v2_id])
+            for v2_id, node_floor in v2_node_floor.items()
+            if node_floor == floor
+        }
+        for floor in copied_natural_floors
+    )
+    if needs_result_mapping_refresh:
+        from pkpm_converter import refresh_result_mappings
+
+        converter_mappings = refresh_result_mappings(jws_path, converter_mappings)
+        v2_to_pm = converter_mappings.get("v2_to_pm", {})
+        elem_map_raw = converter_mappings.get("elem_map", {})
+
     # Build reverse: (pkpm_pmid, floor) → v2_node_id
     pm_floor_to_v2: Dict[tuple[int, int], str] = {}
     for v2_id, pm_id in v2_to_pm.items():

@@ -10,15 +10,14 @@ V2 StructureModelV2 JSON → PKPM JWS (via APIPyInterface)
   标准型钢名称(standard_steel_name)优先于参数化 shape。
 支持的钢材牌号: Q235, Q345, Q355, Q390, Q420, Q460 及 GJ 系列
 支持的混凝土等级: C15, C20, C25, C30, C35, C40...
-多层处理: 单标准层模板 + N 个自然层（楼层截面相同时适用）
+多层处理: 相同荷载层复用标准层；不同恒/活荷载组合复制标准层
 
 单位约定:
   - V2 JSON: 坐标(m), 截面尺寸(mm), 力(kN), 应力(MPa)
   - PKPM APIPyInterface: 坐标(mm), 截面尺寸(mm)
   - RealFloor.SetBottomElevation: m（与 SetFloorHeight 的 mm 约定不同）
 
-重要: 不要调用 AddStandFloor()，直接用 SetCurrentStandFloor(1)。
-      I截面字段映射参考 APIPythonTest.py:
+重要: I截面字段映射参考 APIPythonTest.py:
       V2(H,B,tw,tf) → PKPM(H,B=tw,U=B,T=tf,D=B,F=tf)
 """
 from __future__ import annotations
@@ -998,6 +997,125 @@ def _configure_story_standard_floor_loads(
     return story_floor_indices, load_mapping
 
 
+def _coordinate_key(x: Any, y: Any) -> tuple[float, float]:
+    """Return a stable millimetre plan-coordinate key for PKPM entities."""
+    return (round(float(x), 6), round(float(y), 6))
+
+
+def refresh_result_mappings(
+    jws_path: Path,
+    mappings: dict[str, Any],
+) -> dict[str, Any]:
+    """Refresh result IDs after SATWE renumbers copied standard floors.
+
+    ``AddStandFloor`` initially copies the template IDs, but JWSCYCLE assigns
+    distinct node/member IDs to copied standard floors.  Reopen the completed
+    model and match those IDs back by exact plan coordinates and connectivity.
+    """
+    model = APIPyInterface.Model()
+    if model.OpenPMModel(str(jws_path)) == 0:
+        raise RuntimeError(f"Failed to reopen completed PKPM model '{jws_path}' for result mapping")
+
+    floor_load_mapping = mappings.get("floor_load_mapping", [])
+    stories = mappings.get("stories", [])
+    standard_floor_by_natural_floor = {
+        index + 1: int(item["stand_floor_index"])
+        for index, item in enumerate(floor_load_mapping)
+    }
+    used_standard_floors = sorted(set(standard_floor_by_natural_floor.values()))
+    snapshots: dict[int, dict[str, dict[Any, int]]] = {}
+
+    for standard_floor_index in used_standard_floors:
+        model.SetCurrentStandFloor(standard_floor_index)
+        floor = model.GetCurrentStandFloor()
+        node_xy_by_id = {
+            int(node.GetID()): _coordinate_key(*node.Get())
+            for node in floor.GetNodes()
+        }
+        node_by_xy = {xy: node_id for node_id, xy in node_xy_by_id.items()}
+        if len(node_by_xy) != len(node_xy_by_id):
+            raise RuntimeError(f"PKPM standard floor {standard_floor_index} has duplicate plan nodes")
+
+        columns_by_xy: dict[tuple[float, float], int] = {}
+        for column in floor.GetColumns():
+            segment = column.GetSeg()
+            node_id = int(segment[0])
+            if node_id not in node_xy_by_id:
+                raise RuntimeError(
+                    f"PKPM column {column.GetID()} references unknown plan node {node_id}"
+                )
+            columns_by_xy[node_xy_by_id[node_id]] = int(column.GetID())
+
+        beams_by_endpoints: dict[tuple[tuple[float, float], tuple[float, float]], int] = {}
+        for beam in floor.GetBeams():
+            segment = beam.GetSeg()
+            net = floor.GetNet(int(segment[0]))
+            start_id, end_id = (int(value) for value in net.GetLine())
+            if start_id not in node_xy_by_id or end_id not in node_xy_by_id:
+                raise RuntimeError(f"PKPM beam {beam.GetID()} references unknown plan nodes")
+            endpoints = tuple(sorted((node_xy_by_id[start_id], node_xy_by_id[end_id])))
+            beams_by_endpoints[endpoints] = int(beam.GetID())
+
+        snapshots[standard_floor_index] = {
+            "nodes": node_by_xy,
+            "columns": columns_by_xy,
+            "beams": beams_by_endpoints,
+        }
+
+    story_tops = [float(story.get("elevation", 0)) + float(story["height"]) for story in stories]
+    v2_node_z = mappings.get("v2_node_z", {})
+    v2_to_xy = mappings.get("v2_to_xy", {})
+
+    def natural_floor_for_node(node_id: str) -> int:
+        z = float(v2_node_z[node_id])
+        if abs(z) <= 1e-6:
+            return 0
+        matches = [index + 1 for index, top in enumerate(story_tops) if abs(z - top) <= 1e-6]
+        if len(matches) != 1:
+            raise RuntimeError(f"V2 node '{node_id}' does not map uniquely to a PKPM natural floor")
+        return matches[0]
+
+    refreshed_nodes = dict(mappings.get("v2_to_pm", {}))
+    for node_id, xy_value in v2_to_xy.items():
+        natural_floor = natural_floor_for_node(node_id)
+        if natural_floor == 0:
+            continue
+        standard_floor = standard_floor_by_natural_floor[natural_floor]
+        xy = _coordinate_key(*xy_value)
+        pmid = snapshots[standard_floor]["nodes"].get(xy)
+        if pmid is None:
+            raise RuntimeError(f"PKPM standard floor {standard_floor} is missing V2 node '{node_id}'")
+        refreshed_nodes[node_id] = pmid
+
+    refreshed_elements = {
+        element_id: dict(info)
+        for element_id, info in mappings.get("elem_map", {}).items()
+    }
+    for element_id, info in refreshed_elements.items():
+        node_ids = [str(node_id) for node_id in info.get("floor_nodes", [])]
+        if len(node_ids) != 2:
+            raise RuntimeError(f"PKPM element '{element_id}' does not have two mapped endpoints")
+        natural_floor = max(natural_floor_for_node(node_id) for node_id in node_ids)
+        standard_floor = standard_floor_by_natural_floor[natural_floor]
+        snapshot = snapshots[standard_floor]
+        endpoint_xy = [_coordinate_key(*v2_to_xy[node_id]) for node_id in node_ids]
+        if info.get("type") == "col":
+            pmid = snapshot["columns"].get(endpoint_xy[-1])
+        else:
+            pmid = snapshot["beams"].get(tuple(sorted(endpoint_xy)))
+        if pmid is None:
+            raise RuntimeError(
+                f"PKPM standard floor {standard_floor} is missing V2 element '{element_id}'"
+            )
+        info["pmid"] = pmid
+
+    return {
+        **mappings,
+        "v2_to_pm": refreshed_nodes,
+        "elem_map": refreshed_elements,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main converter
 # ---------------------------------------------------------------------------
@@ -1196,8 +1314,28 @@ def convert_v2_to_jws(
         _log_design_params(model)
 
     model.SavePMModel()
+
+    # AddStandFloor copies are materialized by the first save, which resets
+    # their dead/live values in the installed PKPM API.  Reapply the declared
+    # loads to the now-persistent standard floors and save once more.
+    standard_floor_loads: dict[int, tuple[float, float]] = {}
+    for item in floor_load_mapping:
+        standard_floor_index = int(item["stand_floor_index"])
+        load_pair = (float(item["dead_load"]), float(item["live_load"]))
+        previous = standard_floor_loads.get(standard_floor_index)
+        if previous is not None and previous != load_pair:
+            raise RuntimeError(
+                f"PKPM standard floor {standard_floor_index} has conflicting story loads"
+            )
+        standard_floor_loads[standard_floor_index] = load_pair
+    for standard_floor_index, (dead_load, live_load) in sorted(standard_floor_loads.items()):
+        model.SetCurrentStandFloor(standard_floor_index)
+        model.GetCurrentStandFloor().SetDeadLive(dead_load, live_load)
+    model.SetCurrentStandFloor(1)
+    model.SavePMModel()
     return jws_path, {
         "v2_to_pm": v2_to_pm,
+        "v2_to_xy": v2_to_xy,
         "v2_node_z": {n["id"]: float(n.get("z", 0)) for n in nodes},
         "elem_map": elem_map,
         "stories": stories,

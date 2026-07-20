@@ -915,6 +915,8 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
       expect.objectContaining({ floor: 1, dead: 10, live: 2 }),
       expect.objectContaining({ floor: 2, dead: 0, live: 0 }),
+      expect.objectContaining({ floor: 1, dead: 10, live: 2 }),
+      expect.objectContaining({ floor: 2, dead: 0, live: 0 }),
     ]);
     expect(findCalls(payload, 'Model.AddStandFloor')).toEqual([
       expect.objectContaining({ source: 1, index: 2 }),
@@ -1094,6 +1096,8 @@ describe('PKPM frame analysis flow', () => {
     const payload = runPkpmRuntime(model);
 
     expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
+      expect.objectContaining({ floor: 1, dead: 4.5, live: 2 }),
+      expect.objectContaining({ floor: 2, dead: 5, live: 3 }),
       expect.objectContaining({ floor: 1, dead: 4.5, live: 2 }),
       expect.objectContaining({ floor: 2, dead: 5, live: 3 }),
     ]);
