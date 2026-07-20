@@ -15,6 +15,7 @@ V2 StructureModelV2 JSON → PKPM JWS (via APIPyInterface)
 单位约定:
   - V2 JSON: 坐标(m), 截面尺寸(mm), 力(kN), 应力(MPa)
   - PKPM APIPyInterface: 坐标(mm), 截面尺寸(mm)
+  - RealFloor.SetBottomElevation: m（与 SetFloorHeight 的 mm 约定不同）
 
 重要: 不要调用 AddStandFloor()，直接用 SetCurrentStandFloor(1)。
       I截面字段映射参考 APIPythonTest.py:
@@ -68,6 +69,20 @@ def _resolve_concrete_grade(grade_str: str) -> Any:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _require_member_pmid(member: Any, *, element_id: str, member_type: str) -> int:
+    get_pmid = getattr(member, "GetPmid", None)
+    if not callable(get_pmid):
+        raise RuntimeError(
+            f"PKPM {member_type} '{element_id}' did not expose its result member ID"
+        )
+    pmid = int(get_pmid())
+    if pmid <= 0:
+        raise RuntimeError(
+            f"PKPM {member_type} '{element_id}' returned an invalid result member ID {pmid}"
+        )
+    return pmid
 
 
 def _detect_material_family(data: dict) -> str:
@@ -1119,9 +1134,13 @@ def convert_v2_to_jws(
                             f"PKPM failed to preserve pinned support at plan node {pm_node_id}"
                         ) from error
                 plan_nodes_with_col.add(pm_node_id)
-                _col_pmid_cache[pm_node_id] = getattr(col_obj, 'GetPmid', lambda: pm_node_id)()
+                _col_pmid_cache[pm_node_id] = _require_member_pmid(
+                    col_obj,
+                    element_id=str(elem.get("id", "")),
+                    member_type="column",
+                )
             elem_map[elem.get("id", "")] = {
-                "pmid": _col_pmid_cache.get(pm_node_id, pm_node_id),
+                "pmid": _col_pmid_cache[pm_node_id],
                 "type": "col",
                 "floor_nodes": node_ids,
             }
@@ -1146,7 +1165,11 @@ def convert_v2_to_jws(
                     beam_obj.SetSteelGrade(steel_grade)
                 else:
                     beam_obj.SetConcreteGrade(concrete_grade)
-                _beam_pmid_cache[net_key] = getattr(beam_obj, 'GetPmid', lambda: net_id)()
+                _beam_pmid_cache[net_key] = _require_member_pmid(
+                    beam_obj,
+                    element_id=str(elem.get("id", "")),
+                    member_type="beam",
+                )
             elem_map[elem.get("id", "")] = {
                 "pmid": _beam_pmid_cache[net_key],
                 "type": "beam",
@@ -1163,7 +1186,7 @@ def convert_v2_to_jws(
     for story_index, st in enumerate(stories):
         rf = APIPyInterface.RealFloor()
         rf.SetFloorHeight(float(st["height"]) * m_to_mm)
-        rf.SetBottomElevation(float(st.get("elevation", 0)) * m_to_mm)
+        rf.SetBottomElevation(float(st.get("elevation", 0)))
         rf.SetStandFloorIndex(story_standard_floor_indices[story_index])
         model.AddNaturalFloor(rf)
 

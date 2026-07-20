@@ -167,6 +167,10 @@ describe('YJK RC frame converter', () => {
           { id: 'N1_1', x: 6, y: 0, z: 3, story: 'F1' },
           { id: 'N1_2', x: 0, y: 4, z: 3, story: 'F1' },
           { id: 'N1_3', x: 6, y: 4, z: 3, story: 'F1' },
+          { id: 'N2_0', x: 0, y: 0, z: 7, story: 'F2' },
+          { id: 'N2_1', x: 6, y: 0, z: 7, story: 'F2' },
+          { id: 'N2_2', x: 0, y: 4, z: 7, story: 'F2' },
+          { id: 'N2_3', x: 6, y: 4, z: 7, story: 'F2' },
         ],
         elements: [
           { id: 'C1', type: 'column', nodes: ['N0_0', 'N1_0'], material: '1', section: '1', story: 'F1' },
@@ -177,13 +181,31 @@ describe('YJK RC frame converter', () => {
           { id: 'BX2', type: 'beam', nodes: ['N1_2', 'N1_3'], material: '1', section: '2', story: 'F1' },
           { id: 'BY1', type: 'beam', nodes: ['N1_0', 'N1_2'], material: '1', section: '2', story: 'F1' },
           { id: 'BY2', type: 'beam', nodes: ['N1_1', 'N1_3'], material: '1', section: '2', story: 'F1' },
+          { id: 'C5', type: 'column', nodes: ['N1_0', 'N2_0'], material: '1', section: '1', story: 'F2' },
+          { id: 'C6', type: 'column', nodes: ['N1_1', 'N2_1'], material: '1', section: '1', story: 'F2' },
+          { id: 'C7', type: 'column', nodes: ['N1_2', 'N2_2'], material: '1', section: '1', story: 'F2' },
+          { id: 'C8', type: 'column', nodes: ['N1_3', 'N2_3'], material: '1', section: '1', story: 'F2' },
+          { id: 'BX3', type: 'beam', nodes: ['N2_0', 'N2_1'], material: '1', section: '2', story: 'F2' },
+          { id: 'BX4', type: 'beam', nodes: ['N2_2', 'N2_3'], material: '1', section: '2', story: 'F2' },
+          { id: 'BY3', type: 'beam', nodes: ['N2_0', 'N2_2'], material: '1', section: '2', story: 'F2' },
+          { id: 'BY4', type: 'beam', nodes: ['N2_1', 'N2_3'], material: '1', section: '2', story: 'F2' },
         ],
         stories: [
           {
             id: 'F1',
             height: 3,
             elevation: 0,
-            floor_loads: [{ type: 'dead', value: 16.67 }],
+            floor_loads: [],
+            dead_load: 4.5,
+            live_load: 2,
+          },
+          {
+            id: 'F2',
+            height: 4,
+            elevation: 3,
+            floor_loads: [],
+            dead_load: 5,
+            live_load: 3,
           },
         ],
       };
@@ -256,6 +278,13 @@ describe('YJK RC frame converter', () => {
         xspans: [0, 6000],
         yspans: [0, 4000],
       });
+      expect(payload.calls.filter((call) => call.method === 'StdFlr_Generate')).toEqual([
+        expect.objectContaining({ height_mm: 3000, dead: 4.5, live: 2 }),
+        expect.objectContaining({ height_mm: 4000, dead: 5, live: 3 }),
+      ]);
+      expect(payload.calls.filter((call) => call.method === 'node_generate')).toHaveLength(2);
+      expect(payload.calls.filter((call) => call.method === 'column_arrange')).toHaveLength(2);
+      expect(payload.calls.filter((call) => call.method === 'beam_arrange')).toHaveLength(4);
       expect(payload.mapping.coordinate_contract).toMatchObject({
         semantics: 'global-z-up',
         dimension: '3d',

@@ -132,6 +132,10 @@ def _get_floor_loads(story: dict) -> tuple[float, float]:
             dead = float(fl["value"])
         elif fl.get("type") == "live":
             live = float(fl["value"])
+    if story.get("dead_load") is not None:
+        dead = float(story["dead_load"])
+    if story.get("live_load") is not None:
+        live = float(story["live_load"])
     return dead, live
 
 
@@ -1029,27 +1033,20 @@ def convert_v2_to_ydb(
     xspans, yspans = _extract_grid_spans(nodes)
     _log(f"Grid spans: xspans={xspans}, yspans={yspans}")
 
-    nodelist = data_func.node_generate(xspans, yspans, std_flr)
-    _log(f"node_generate returned: {nodelist} (type: {type(nodelist)})")
-
     first_col = next(iter(col_defs.values()))
-    _log(f"Arranging columns with section: {first_col}")
+    first_beam = next(iter(beam_defs.values()))
     # NOTE: YJK DataFunc.column_arrange / beam_arrange applies one section to all
     # members in the grid at once.  Per-element section assignment is not supported
     # by this API level; the first defined section is used as the representative
     # section for the whole building.  Models with multiple distinct sections will
     # have their primary section applied uniformly here.
-    try:
+    def _populate_standard_floor(s_flr: Any) -> tuple[Any, Any, Any, Any]:
+        nodelist = data_func.node_generate(xspans, yspans, s_flr)
+        _log(f"node_generate returned: {nodelist} (type: {type(nodelist)})")
+        _log(f"Arranging columns with section: {first_col}")
         col_result = data_func.column_arrange(nodelist, first_col)
         _log(f"column_arrange returned: {col_result}")
-    except Exception as exc:
-        _log(f"ERROR: column_arrange failed: {exc}")
-        raise
-
-    first_beam = next(iter(beam_defs.values()))
-    _log(f"Arranging beams with section: {first_beam}")
-    # Same API constraint as columns above — one section per grid arrangement call.
-    try:
+        _log(f"Arranging beams with section: {first_beam}")
         grid_x = data_func.grid_generate(nodelist, 0, 1)
         _log(f"grid_generate(0,1) returned: {grid_x}")
         grid_y = data_func.grid_generate(nodelist, 1, 0)
@@ -1058,9 +1055,12 @@ def convert_v2_to_ydb(
         _log(f"beam_arrange(grid_x) returned: {beam_x_result}")
         beam_y_result = data_func.beam_arrange(grid_y, first_beam)
         _log(f"beam_arrange(grid_y) returned: {beam_y_result}")
-    except Exception as exc:
-        _log(f"ERROR: beam arrangement failed: {exc}")
-        raise
+        return nodelist, col_result, beam_x_result, beam_y_result
+
+    nodelist, col_result, beam_x_result, beam_y_result = _populate_standard_floor(std_flr)
+    standard_floors: dict[tuple[int, float, float], Any] = {
+        (height_mm, dead, live): std_flr,
+    }
 
     # Assemble floors story by story.
     #
@@ -1095,9 +1095,12 @@ def convert_v2_to_ydb(
             else:
                 break
 
-        s_flr = data_func.StdFlr_Generate(ref_h, ref_dead, ref_live) if (
-            ref_h != height_mm or ref_dead != dead or ref_live != live
-        ) else std_flr
+        floor_key = (ref_h, ref_dead, ref_live)
+        s_flr = standard_floors.get(floor_key)
+        if s_flr is None:
+            s_flr = data_func.StdFlr_Generate(ref_h, ref_dead, ref_live)
+            _populate_standard_floor(s_flr)
+            standard_floors[floor_key] = s_flr
 
         _log(f"Floors_Assemb(H_start={cumulative_h}, flr, count={group_count}, h={ref_h}) "
              f"[stories {group_start + 1}-{group_start + group_count}]")

@@ -341,6 +341,19 @@ function runPkpmRuntime(model, options = {}) {
           : []
       ),
       'def fake_extract(jws_path, material_family="steel"):',
+      '    node_pmids = sorted({call["id"] for call in APIPyInterface.calls if call["method"] == "StandFloor.AddNode"})',
+      '    beam_pmids = sorted({call["pmid"] for call in APIPyInterface.calls if call["method"] == "StandFloor.AddBeamEx"})',
+      '    column_pmids = sorted({call["pmid"] for call in APIPyInterface.calls if call["method"] == "StandFloor.AddColumn"})',
+      '    floors = range(1, len(model.get("stories", [])) + 1)',
+      `    include_values = ${options.includeMappedResults ? 'True' : 'False'}`,
+      '    node_values = {(pmid, floor): {"ux": 0.00125 if include_values and pmid == node_pmids[0] and floor == 1 else 0.0, "uy": 0.0, "uz": 0.0} for floor in floors for pmid in node_pmids}',
+      '    beam_values = {(pmid, floor): {"N": 0.0, "Vy": 0.0, "Vz": 8.0 if include_values and pmid == beam_pmids[0] and floor == 1 else 0.0, "T": 0.0, "My": 12.0 if include_values and pmid == beam_pmids[0] and floor == 1 else 0.0, "Mz": 0.0, "V": 8.0 if include_values and pmid == beam_pmids[0] and floor == 1 else 0.0, "M": 12.0 if include_values and pmid == beam_pmids[0] and floor == 1 else 0.0} for floor in floors for pmid in beam_pmids}',
+      '    column_values = {(pmid, floor): {"N": -100.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "Vy": 3.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "Vz": 4.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "T": 0.0, "My": 6.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "Mz": 8.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "V": 5.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0, "M": 10.0 if include_values and pmid == column_pmids[0] and floor == 1 else 0.0} for floor in floors for pmid in column_pmids}',
+      ...(
+        options.incompleteResults
+          ? ['    node_values.pop(next(iter(node_values)))']
+          : []
+      ),
       ...(
         options.createPdbMismatchDuringExtract
           ? ['    write_pdb_mismatch(jws_path.parent)']
@@ -357,9 +370,13 @@ function runPkpmRuntime(model, options = {}) {
       '        "beam_count": len([e for e in model.get("elements", []) if e.get("type") == "beam"]),',
       '        "column_count": len([e for e in model.get("elements", []) if e.get("type") == "column"]),',
       '        "mode_periods": [{"index": 1, "period_s": 0.42}],',
-      '        "beams": [], "columns": [], "node_displacements": [],',
+      '        "beams": [{"floor": floor, "pmid": pmid, "max_shear_force_kn": 0.0, "positive_moments_kNm": [0.0], "negative_moments_kNm": [0.0]} for floor in floors for pmid in beam_pmids],',
+      '        "columns": [{"floor": floor, "pmid": pmid, "max_axial_force_kn": 0.0, "max_shear_force_kn": 0.0, "max_moment_kNm": 0.0} for floor in floors for pmid in column_pmids],',
+      '        "node_displacements": [{"pmid": pmid, "floor": floor, "max_disp_x_mm": 0.0, "max_disp_y_mm": 0.0, "max_disp_z_mm": 0.0} for floor in floors for pmid in node_pmids],',
       '        "story_drift": [], "storey_stiffness": [], "bearing_shear": [],',
-      '        "case_node_disps": {}, "case_beam_forces": {}, "case_col_forces": {},',
+      '        "case_node_disps": {"DL": node_values},',
+      '        "case_beam_forces": {"DL": beam_values},',
+      '        "case_col_forces": {"DL": column_values},',
       '        "satwe_params": {"material_family": material_family},',
       '    }',
       'runtime._extract_results = fake_extract',
@@ -409,6 +426,81 @@ function runPkpmRuntime(model, options = {}) {
       .find((line) => line.trim().startsWith('{'));
     expect(payloadLine).toBeTruthy();
     return JSON.parse(payloadLine);
+  } finally {
+    fs.rmSync(stubsDir, { recursive: true, force: true });
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function runPkpmResultExtraction() {
+  if (!pythonCommand) {
+    throw new Error('No Python command available');
+  }
+
+  const stubsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sclaw-pkpm-api-'));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sclaw-pkpm-results-'));
+  writePkpmApiStub(stubsDir);
+
+  try {
+    const script = [
+      'import json, sys',
+      'from pathlib import Path',
+      `sys.path.insert(0, ${JSON.stringify(stubsDir)})`,
+      `sys.path.insert(1, ${JSON.stringify(runtimeSupportDir)})`,
+      `sys.path.insert(2, ${JSON.stringify(pkpmDir)})`,
+      'import runtime',
+      'import APIPyInterface',
+      'class Disp:',
+      '    def __init__(self, x): self.x = x',
+      '    def GetDispX(self): return self.x',
+      '    def GetDispY(self): return 0.0',
+      '    def GetDispZ(self): return 0.0',
+      'class ResultNode:',
+      '    def __init__(self, pmid, value): self.pmid = pmid; self.value = value',
+      '    def GetPmID(self): return self.pmid',
+      '    def GetFloorNo(self): return 1',
+      '    def GetNodeDisp(self): return {"DL": Disp(self.value)}',
+      'class ResultBeam:',
+      '    def GetPmid(self): return 2000',
+      '    def GetForce(self): return {"DL": {0: [0, 3, 4, 0, 0, 10], 1: [0, 0, 0, 0, -6, 0]}}',
+      '    def GetShearingforce(self): return 0.0',
+      '    def GetPosiMoment(self): return [0.0]',
+      '    def GetNegaMoment(self): return [0.0]',
+      'class FakeResultData:',
+      '    def InitialResult(self, _path): return 1',
+      '    def ClearResult(self): pass',
+      '    def GetModePeriods(self): return []',
+      '    def GetDesignBeams(self, floor): return [ResultBeam()] if floor == 1 else []',
+      '    def GetDesignColumns(self, _floor): return []',
+      '    def GetPyNodeInResult(self): return [ResultNode(0, 9.0), ResultNode(1, 0.00125)]',
+      '    def GetStoryDrift_Earthquake(self): return {}',
+      '    def GetStoryDrift_Wind(self): return {}',
+      '    def GetStoreyStifs(self): return []',
+      '    def GetBearingShear(self): return []',
+      'APIPyInterface.ResultData = FakeResultData',
+      'runtime._read_satwe_params = lambda _result: {}',
+      'runtime._read_wmass_design_params = lambda _work_dir: {}',
+      `result = runtime._extract_results(Path(${JSON.stringify(path.join(workDir, 'model.JWS'))}))`,
+      'case_items = result["case_node_disps"]["DL"]',
+      'beam_force = result["case_beam_forces"]["DL"][(2000, 1)]',
+      'payload = {',
+      '    "summary": result["summary"],',
+      '    "node_displacements": result["node_displacements"],',
+      '    "case_keys": [list(key) for key in case_items],',
+      '    "case_ux": case_items[(1, 1)]["ux"],',
+      '    "beam_force": beam_force,',
+      '}',
+      'print(json.dumps(payload))',
+    ].join('\n');
+
+    const result = spawnSync(pythonCommand.executable, [...pythonCommand.args, '-c', script], {
+      encoding: 'utf8',
+      windowsHide: process.platform === 'win32',
+    });
+    if (result.status !== 0) {
+      throw new Error(`PKPM result extraction failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    }
+    return JSON.parse(result.stdout.trim());
   } finally {
     fs.rmSync(stubsDir, { recursive: true, force: true });
     fs.rmSync(workDir, { recursive: true, force: true });
@@ -705,7 +797,7 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'Column.SetSteelGrade')).toHaveLength(0);
     expect(findCalls(payload, 'Beam.SetSteelGrade')).toHaveLength(0);
     expect(findCalls(payload, 'RealFloor.SetFloorHeight').map((call) => call.height)).toEqual([3600, 3600]);
-    expect(findCalls(payload, 'RealFloor.SetBottomElevation').map((call) => call.elevation)).toEqual([0, 3600]);
+    expect(findCalls(payload, 'RealFloor.SetBottomElevation').map((call) => call.elevation)).toEqual([0, 3.6]);
     expect(findCalls(payload, 'StandFloor.AddColumn')).toHaveLength(6);
     expect(findCalls(payload, 'StandFloor.AddBeamEx')).toHaveLength(7);
     expect(nodeCoords).toEqual(expect.arrayContaining([
@@ -987,6 +1079,45 @@ describe('PKPM frame analysis flow', () => {
     expect(payload.result).toBeUndefined();
     expect(payload.error).toContain('must be horizontal in the global X-Y floor plane');
     expect(findCalls(payload, 'StandFloor.AddNode')).toHaveLength(0);
+  });
+
+  test('fails closed when PKPM result rows do not cover the converted model', () => {
+    const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
+      incompleteResults: true,
+      expectFailure: true,
+    });
+
+    expect(payload.result).toBeUndefined();
+    expect(payload.errorType).toBe('RuntimeError');
+    expect(payload.error).toContain('displacement nodes do not exactly cover');
+  });
+
+  test('preserves metre translations and maps PKPM result member IDs to V2 IDs', () => {
+    const payload = runPkpmRuntime(buildGenericRcFrameModelWithLegacyRectSections(), {
+      includeMappedResults: true,
+    });
+
+    expect(payload.result.displacements.N5).toMatchObject({ ux: 0.00125, uy: 0, uz: 0 });
+    expect(payload.result.caseResults.DL.displacements.N5.ux).toBe(0.00125);
+    expect(payload.result.forces.BX1).toMatchObject({ Vz: 8, My: 12 });
+    expect(payload.result.forces.C1).toMatchObject({ N: -100, Vy: 3, Vz: 4, My: 6, Mz: 8 });
+    expect(payload.result.caseResults.DL.forces.BX1.My).toBe(12);
+    expect(payload.result.caseResults.DL.forces.C1.N).toBe(-100);
+    expect(payload.result.envelope.maxAbsReaction).toBeUndefined();
+    expect(payload.result.summary.reactionResultAvailable).toBe(false);
+    expect(payload.result.warnings.join('\n')).toContain('节点反力');
+  });
+
+  test('converts PKPM metre translations to millimetre summaries and ignores pseudo nodes', () => {
+    const payload = runPkpmResultExtraction();
+
+    expect(payload.summary.max_displacement_mm).toBe(1.25);
+    expect(payload.node_displacements).toEqual([
+      expect.objectContaining({ pmid: 1, floor: 1, max_disp_x_mm: 1.25 }),
+    ]);
+    expect(payload.case_keys).toEqual([[1, 1]]);
+    expect(payload.case_ux).toBe(0.00125);
+    expect(payload.beam_force).toMatchObject({ Vy: 3, Vz: 4, My: -6, Mz: 10, V: 5, M: 10 });
   });
 
   test('keeps steel-frame PKPM flow on steel sections and steel SATWE material', () => {

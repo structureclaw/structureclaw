@@ -245,20 +245,9 @@ def _signed_max_abs(current: float, candidate: float) -> float:
 def _has_core_pkpm_results(extracted: Dict[str, Any]) -> bool:
     if not extracted:
         return False
-    if extracted.get("mode_periods"):
-        return True
-    if extracted.get("beams") or extracted.get("columns"):
-        return True
-    if extracted.get("node_displacements"):
-        return True
-    if _safe_float(extracted.get("floors_analyzed", 0)) > 0:
-        return True
-    summary = extracted.get("summary") or {}
-    return any(_safe_float(summary.get(key, 0)) > 0 for key in (
-        "max_displacement_mm",
-        "max_shear_force_kn",
-        "max_bending_moment_kNm",
-    ))
+    has_node_results = bool(extracted.get("case_node_disps"))
+    has_member_results = bool(extracted.get("case_beam_forces")) or bool(extracted.get("case_col_forces"))
+    return has_node_results and has_member_results
 
 
 def _read_satwe_params(result: Any) -> Dict[str, Any]:
@@ -340,9 +329,9 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
         for p in result.GetModePeriods():
             mode_periods.append({
                 "index": p.GetIndex(),
-                "period_s": round(p.GetCycle(), 4),
-                "angle": round(p.GetAngle(), 2),
-                "torsion_ratio": round(p.GetTorsi(), 4),
+                "period_s": round(_finite_result_float(p.GetCycle(), "mode period"), 4),
+                "angle": round(_finite_result_float(p.GetAngle(), "mode angle"), 2),
+                "torsion_ratio": round(_finite_result_float(p.GetTorsi(), "mode torsion ratio"), 4),
             })
 
         # ---- Beam & column design data per floor ----
@@ -354,6 +343,7 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
         all_node_disp_x: list[float] = []
         all_node_disp_y: list[float] = []
         all_node_disp_z: list[float] = []
+        all_node_disp_magnitudes: list[float] = []
         # Per-load-case force accumulation: {case_name: {(pmid,floor): {N,Vy,Vz,T,My,Mz}}}
         case_beam_forces: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
         case_col_forces: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
@@ -385,23 +375,33 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                                 _finite_result_float(value, f"beam {pmid} force[{index}]")
                                 for index, value in enumerate(vals[:6])
                             ]
-                            beam_max_v = max(beam_max_v, abs(components[2]))  # Vz
-                            beam_max_m = max(beam_max_m, abs(components[4]))  # My
+                            station_v = math.hypot(components[1], components[2])
+                            station_m = math.hypot(components[4], components[5])
+                            beam_max_v = max(beam_max_v, station_v)
+                            beam_max_m = max(beam_max_m, station_m)
                             # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
                             beam_key = (pmid, floor_idx)
                             case_beam_forces.setdefault(case_name, {}).setdefault(
-                                beam_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                                beam_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0, "V": 0.0, "M": 0.0}
                             )
                             entry = case_beam_forces[case_name][beam_key]
                             for component, value in zip(
                                 ("N", "Vy", "Vz", "T", "My", "Mz"), components
                             ):
                                 entry[component] = _signed_max_abs(entry[component], value)
+                            entry["V"] = max(entry["V"], station_v)
+                            entry["M"] = max(entry["M"], station_m)
 
                 # Fallback: use design summary methods
-                shear = _safe_float(b.GetShearingforce())
-                posi = b.GetPosiMoment()
-                nega = b.GetNegaMoment()
+                shear = _finite_result_float(b.GetShearingforce(), f"beam {pmid} design shear")
+                posi = [
+                    _finite_result_float(value, f"beam {pmid} positive moment")
+                    for value in b.GetPosiMoment()
+                ]
+                nega = [
+                    _finite_result_float(value, f"beam {pmid} negative moment")
+                    for value in b.GetNegaMoment()
+                ]
 
                 # Prefer GetForce() values if design methods return 0
                 if beam_max_v > 0 and abs(shear) < 0.001:
@@ -453,13 +453,18 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                             # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
                             col_key = (pmid, floor_idx)
                             case_col_forces.setdefault(case_name, {}).setdefault(
-                                col_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                                col_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0, "V": 0.0, "M": 0.0}
                             )
                             entry = case_col_forces[case_name][col_key]
                             for component, value in zip(
                                 ("N", "Vy", "Vz", "T", "My", "Mz"), components
                             ):
                                 entry[component] = _signed_max_abs(entry[component], value)
+                            entry["V"] = max(entry["V"], math.hypot(components[1], components[2]))
+                            entry["M"] = max(entry["M"], math.hypot(components[4], components[5]))
+
+                max_shear_force = max(max_shear_force, col_max_v)
+                max_posi_moment = max(max_posi_moment, col_max_m)
 
                 column_results.append({
                     "floor": floor_idx,
@@ -478,17 +483,21 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
         case_node_disps: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
         try:
             for node in result.GetPyNodeInResult():
+                pmid = int(node.GetPmID())
+                if pmid <= 0:
+                    continue
+                floor_no = int(node.GetFloorNo())
                 disp_dict = node.GetNodeDisp()
                 best_mag = 0.0
                 best_dx = best_dy = best_dz = 0.0
                 for case_name, nd in disp_dict.items():
+                    # PKPM ResultData translations are returned in metres.
                     vx = _finite_result_float(nd.GetDispX(), "node displacement X")
                     vy = _finite_result_float(nd.GetDispY(), "node displacement Y")
                     vz = _finite_result_float(nd.GetDispZ(), "node displacement Z")
                     if abs(vx) >= _SENTINEL or abs(vy) >= _SENTINEL or abs(vz) >= _SENTINEL:
                         continue
-                    pmid = node.GetPmID()
-                    node_key = (pmid, node.GetFloorNo())
+                    node_key = (pmid, floor_no)
                     case_node_disps.setdefault(case_name, {})[node_key] = {
                         "ux": vx, "uy": vy, "uz": vz,
                     }
@@ -503,22 +512,20 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                     all_node_disp_y.append(dy)
                 if dz > 0:
                     all_node_disp_z.append(dz)
+                if best_mag > 0:
+                    all_node_disp_magnitudes.append(best_mag)
                 if dx > 0 or dy > 0 or dz > 0:
                     node_displacements.append({
-                        "pmid": node.GetPmID(),
-                        "floor": node.GetFloorNo(),
-                        "max_disp_x_mm": round(dx, 4),
-                        "max_disp_y_mm": round(dy, 4),
-                        "max_disp_z_mm": round(dz, 4),
+                        "pmid": pmid,
+                        "floor": floor_no,
+                        "max_disp_x_mm": round(dx * 1000.0, 4),
+                        "max_disp_y_mm": round(dy * 1000.0, 4),
+                        "max_disp_z_mm": round(dz * 1000.0, 4),
                     })
         except Exception as error:
             raise RuntimeError(f"Failed to extract PKPM nodal translations: {error}") from error
 
-        max_displacement = max(
-            max(all_node_disp_x, default=0.0),
-            max(all_node_disp_y, default=0.0),
-            max(all_node_disp_z, default=0.0),
-        )
+        max_displacement = max(all_node_disp_magnitudes, default=0.0)
 
         # ---- Story drift ratios ----
         story_drift: list[dict[str, Any]] = []
@@ -527,16 +534,16 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                 story_drift.append({
                     "direction": label,
                     "floor": d.Getifloor(),
-                    "max_displacement_mm": round(_safe_float(d.GetmaxD()), 4),
-                    "drift_ratio": round(_safe_float(d.GetratioD()), 6),
+                    "max_displacement_mm": round(_finite_result_float(d.GetmaxD(), "earthquake story displacement"), 4),
+                    "drift_ratio": round(_finite_result_float(d.GetratioD(), "earthquake story drift ratio"), 6),
                 })
         for label, drift_data in result.GetStoryDrift_Wind().items():
             for d in drift_data:
                 story_drift.append({
                     "direction": label,
                     "floor": d.Getifloor(),
-                    "max_displacement_mm": round(_safe_float(d.GetmaxD()), 4),
-                    "drift_ratio": round(_safe_float(d.GetratioD()), 6),
+                    "max_displacement_mm": round(_finite_result_float(d.GetmaxD(), "wind story displacement"), 4),
+                    "drift_ratio": round(_finite_result_float(d.GetratioD(), "wind story drift ratio"), 6),
                 })
 
         # ---- Story stiffness ----
@@ -545,10 +552,10 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
             storey_stiffness.append({
                 "floor": s.Getfloorindex(),
                 "tower": s.GetTowerIndex(),
-                "stiffness_x_kn_m": round(_safe_float(s.GetRJX()), 2),
-                "stiffness_y_kn_m": round(_safe_float(s.GetRJY()), 2),
-                "ratio_x": round(_safe_float(s.GetRatx()), 4),
-                "ratio_y": round(_safe_float(s.GetRaty()), 4),
+                "stiffness_x_kn_m": round(_finite_result_float(s.GetRJX(), "storey stiffness X"), 2),
+                "stiffness_y_kn_m": round(_finite_result_float(s.GetRJY(), "storey stiffness Y"), 2),
+                "ratio_x": round(_finite_result_float(s.GetRatx(), "storey stiffness ratio X"), 4),
+                "ratio_y": round(_finite_result_float(s.GetRaty(), "storey stiffness ratio Y"), 4),
             })
 
         # ---- Bearing shear ----
@@ -557,9 +564,9 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
             bearing_shear.append({
                 "floor": bs.GetFloorNum(),
                 "tower": bs.GetTowerNum(),
-                "ratio_x": round(_safe_float(bs.GetRatx()), 4),
-                "ratio_y": round(_safe_float(bs.GetRaty()), 4),
-                "limit_value": round(_safe_float(bs.GetLimitVal()), 4),
+                "ratio_x": round(_finite_result_float(bs.GetRatx(), "bearing shear ratio X"), 4),
+                "ratio_y": round(_finite_result_float(bs.GetRaty(), "bearing shear ratio Y"), 4),
+                "limit_value": round(_finite_result_float(bs.GetLimitVal(), "bearing shear limit"), 4),
             })
 
         satwe_params = _read_satwe_params(result)
@@ -571,7 +578,7 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
             "column_count": len(column_results),
             "floors_analyzed": floor_idx - 1,
             "summary": {
-                "max_displacement_mm": round(max_displacement, 4),
+                "max_displacement_mm": round(max_displacement * 1000.0, 4),
                 "max_shear_force_kn": round(max_shear_force, 2),
                 "max_bending_moment_kNm": round(max(max_posi_moment, max_nega_moment), 2),
             },
@@ -756,6 +763,43 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             pm_floor_elem_to_v2[key] = v2_eid
     if len(pm_floor_elem_to_v2) != len(elem_map_raw):
         raise RuntimeError("PKPM converter did not produce an exact result mapping for every V2 element")
+
+    case_node_disps = extracted.get("case_node_disps", {})
+    case_beam_forces = extracted.get("case_beam_forces", {})
+    case_col_forces = extracted.get("case_col_forces", {})
+    result_node_keys = {
+        key for case_values in case_node_disps.values() for key in case_values
+    }
+    result_element_keys = {
+        key
+        for case_blocks in (case_beam_forces, case_col_forces)
+        for case_values in case_blocks.values()
+        for key in case_values
+    }
+    for label, actual, expected in (
+        ("displacement nodes", result_node_keys, set(pm_floor_to_v2)),
+        ("force elements", result_element_keys, set(pm_floor_elem_to_v2)),
+    ):
+        if actual != expected:
+            missing = sorted(expected - actual)
+            unexpected = sorted(actual - expected)
+            raise RuntimeError(
+                f"PKPM {label} do not exactly cover the converted model "
+                f"(missing={missing[:5]}, unexpected={unexpected[:5]})"
+            )
+    result_case_names = set(case_node_disps) | set(case_beam_forces) | set(case_col_forces)
+    for case_name in result_case_names:
+        case_nodes = set(case_node_disps.get(case_name, {}))
+        case_elements = set(case_beam_forces.get(case_name, {})) | set(case_col_forces.get(case_name, {}))
+        for label, actual, expected in (
+            ("displacement nodes", case_nodes, set(pm_floor_to_v2)),
+            ("force elements", case_elements, set(pm_floor_elem_to_v2)),
+        ):
+            if actual != expected:
+                raise RuntimeError(
+                    f"PKPM case '{case_name}' {label} do not exactly cover the converted model"
+                )
+
     for displacement in node_disps:
         key = (displacement.get("pmid"), displacement.get("floor"))
         if key not in pm_floor_to_v2:
@@ -774,11 +818,13 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         for _case_name, key_map in case_forces_dict.items():
             for key, f in key_map.items():
                 if key not in elem_max_forces:
-                    elem_max_forces[key] = {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                    elem_max_forces[key] = {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0, "V": 0.0, "M": 0.0}
                 entry = elem_max_forces[key]
                 for comp in ("N", "Vy", "Vz", "T", "My", "Mz"):
                     value = _finite_result_float(f.get(comp), f"{key} {comp}")
                     entry[comp] = _signed_max_abs(entry[comp], value)
+                entry["V"] = max(entry["V"], _finite_result_float(f.get("V"), f"{key} V"))
+                entry["M"] = max(entry["M"], _finite_result_float(f.get("M"), f"{key} M"))
 
     for key, f in elem_max_forces.items():
         v2_eid = pm_floor_elem_to_v2.get(key)
@@ -787,8 +833,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         elem_id = v2_eid
         forces[elem_id] = {
             "N": f["N"],
-            "V": (f["Vy"]**2 + f["Vz"]**2)**0.5,
-            "M": (f["My"]**2 + f["Mz"]**2)**0.5,
+            "V": f["V"],
+            "M": f["M"],
             "Vy": f["Vy"],
             "Vz": f["Vz"],
             "My": f["My"],
@@ -809,9 +855,6 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     )
 
     # ---- Build caseResults + envelopeTables (Phase 3) ----
-    case_node_disps = extracted.get("case_node_disps", {})
-    case_beam_forces = extracted.get("case_beam_forces", {})
-    case_col_forces = extracted.get("case_col_forces", {})
     floors_analyzed = extracted.get("floors_analyzed", 0)
 
     all_case_names: set[str] = set()
@@ -831,9 +874,9 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             if v2_id is None:
                 raise RuntimeError(f"PKPM case displacement {key} cannot be mapped to a V2 node")
             normalized_disp = {
-                "ux": _finite_result_float(disp.get("ux"), f"{key} ux") / 1000.0,
-                "uy": _finite_result_float(disp.get("uy"), f"{key} uy") / 1000.0,
-                "uz": _finite_result_float(disp.get("uz"), f"{key} uz") / 1000.0,
+                "ux": _finite_result_float(disp.get("ux"), f"{key} ux"),
+                "uy": _finite_result_float(disp.get("uy"), f"{key} uy"),
+                "uz": _finite_result_float(disp.get("uz"), f"{key} uz"),
             }
             case_disps[v2_id] = normalized_disp
             previous = displacements.get(v2_id)
@@ -854,8 +897,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             elem_id = v2_eid
             case_forces_out[elem_id] = {
                 "N": force["N"],
-                "V": (force["Vy"]**2 + force["Vz"]**2)**0.5,
-                "M": (force["My"]**2 + force["Mz"]**2)**0.5,
+                "V": force["V"],
+                "M": force["M"],
                 "Vy": force["Vy"], "Vz": force["Vz"],
                 "My": force["My"], "Mz": force["Mz"], "T": force["T"],
                 "referenceFrame": "element-local",
@@ -871,8 +914,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             case_forces_out[elem_id] = {
                 **existing,
                 "N": force["N"],
-                "V": (force["Vy"]**2 + force["Vz"]**2)**0.5,
-                "M": (force["My"]**2 + force["Mz"]**2)**0.5,
+                "V": force["V"],
+                "M": force["M"],
                 "Vy": force["Vy"], "Vz": force["Vz"],
                 "My": force["My"], "Mz": force["Mz"], "T": force["T"],
                 "referenceFrame": "element-local",
@@ -956,10 +999,13 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     envelope["maxAbsAxialForce"] = g_max_axial
     envelope["maxAbsShearForce"] = g_max_shear
     envelope["maxAbsMoment"] = g_max_moment
-    envelope["maxAbsReaction"] = 0.0
     envelope["controlElementAxialForce"] = control_elem_axial
     envelope["controlElementShearForce"] = control_elem_shear
     envelope["controlElementMoment"] = control_elem_moment
+    warnings.append(
+        "PKPM ResultData API does not expose nodal reactions; reactions are unavailable. / "
+        "PKPM ResultData API 当前不提供节点反力，反力结果不可用。"
+    )
 
     # Build result dict
     result_dict: Dict[str, Any] = {
@@ -974,6 +1020,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "maxDisplacementNode": max_disp_node,
             "nodeCount": len(displacements),
             "elementCount": len(forces),
+            "reactionResultAvailable": False,
             "engine": "pkpm-static",
             "materialFamily": material_family,
             "jws_path": str(jws_path),

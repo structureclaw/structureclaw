@@ -640,6 +640,12 @@ def _validate_yjk_grid_conversion_scope(model_dict: dict) -> None:
             if load_type in seen_load_types:
                 raise ValueError(f"Story '{story_id}' contains duplicate '{load_type}' floor loads")
             seen_load_types.add(load_type)
+        for field in ("dead_load", "live_load"):
+            if story.get(field) is None:
+                continue
+            value = float(story[field])
+            if not math.isfinite(value):
+                raise ValueError(f"Story '{story_id}' contains a non-finite {field}")
 
     base_z = zs[0]
     for node in nodes:

@@ -20,11 +20,21 @@ def test_build_analysis_result_maps_yjk_member_design_results():
     driver = _load_driver_module()
 
     extracted = {
-        "meta": {"n_floors": 1, "n_nodes": 0, "load_cases": []},
-        "load_cases": [],
-        "nodes": [],
-        "node_disp": {},
-        "node_reactions": {},
+        "meta": {"n_floors": 1, "n_nodes": 3, "load_cases": [1]},
+        "load_cases": [{"id": 1, "key": "lc_1", "name": "DL"}],
+        "nodes": [
+            {"id": 1, "x": 0, "y": 0, "z": 0},
+            {"id": 2, "x": 6, "y": 0, "z": 0},
+            {"id": 3, "x": 12, "y": 0, "z": 0},
+        ],
+        "node_disp": {"lc_1": [
+            {"id": node_id, "ux": 0, "uy": 0, "uz": 0, "rx": 0, "ry": 0, "rz": 0}
+            for node_id in (1, 2, 3)
+        ]},
+        "node_reactions": {"lc_1": [
+            {"id": node_id, "fx": 0, "fy": 0, "fz": 0, "mx": 0, "my": 0, "mz": 0}
+            for node_id in (1, 2, 3)
+        ]},
         "members": {
             "columns": [
                 {"id": 101, "tot_id": 101, "floor": 1, "node_i": 1, "node_j": 2, "sequence": 1},
@@ -34,7 +44,11 @@ def test_build_analysis_result_maps_yjk_member_design_results():
             ],
             "braces": [],
         },
-        "member_forces": {"columns": {}, "beams": {}, "braces": {}},
+        "member_forces": {
+            "columns": {"lc_1": [{"id": 101, "floor": 1, "sections": [[0, 0, 0, 0, -10, 0]]}]},
+            "beams": {"lc_1": [{"id": 201, "floor": 1, "sequence": 1, "sections": [[0, 5, 0, 3, 0, 0]]}]},
+            "braces": {"lc_1": []},
+        },
         "member_design": {
             "columns": [
                 {
@@ -65,7 +79,11 @@ def test_build_analysis_result_maps_yjk_member_design_results():
         "floor_stats": [],
     }
     mapping = {
-        "nodes": {},
+        "nodes": {
+            "N1": {"v2_id": "N1", "yjk_std_floor_node_id": 1, "x_mm": 0, "y_mm": 0, "z_mm": 0},
+            "N2": {"v2_id": "N2", "yjk_std_floor_node_id": 2, "x_mm": 6000, "y_mm": 0, "z_mm": 0},
+            "N3": {"v2_id": "N3", "yjk_std_floor_node_id": 3, "x_mm": 12000, "y_mm": 0, "z_mm": 0},
+        },
         "elements": {
             "C1": {"v2_id": "C1", "type": "column", "floor_index": 1, "yjk_model_id": 101, "nodes": ["N1", "N2"]},
             "B1": {
@@ -102,7 +120,7 @@ def test_build_analysis_result_maps_yjk_member_design_results():
         "controllingCheck": "正截面受弯",
     }
     assert result["designResults"]["elements"]["C1"]["yjk"]["matchMethod"] == "direct"
-    assert result["designResults"]["elements"]["B1"]["yjk"]["matchMethod"] == "sequence"
+    assert result["designResults"]["elements"]["B1"]["yjk"]["matchMethod"] == "endpoint"
     assert driver._design_usage_by_check(
         "beams",
         {"design_ratio": {"max_abs_numeric": 9.0, "numeric_count": 1}},

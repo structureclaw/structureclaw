@@ -69,12 +69,27 @@ mapping = {
     },
 }
 
+ambiguous_id_lookup = driver._build_result_node_lookup(
+    {"nodes": [{"id": 101, "x": 0, "y": 0, "z": 0}]},
+    {"nodes": {
+        "N1": {"v2_id": "N1", "yjk_std_floor_node_id": 101, "x_mm": 0, "y_mm": 0, "z_mm": 0},
+        "N2": {"v2_id": "N2", "yjk_std_floor_node_id": 101, "x_mm": 6000, "y_mm": 0, "z_mm": 0},
+    }},
+)
+assert ambiguous_id_lookup["101"] == "N1"
+
 extracted = {
     "meta": {"n_floors": 1, "n_nodes": 2, "load_cases": [101]},
     "load_cases": [{"id": 101, "key": "lc_101", "name": "DL", "expName": "Dead", "kind": 1, "oldId": 1}],
     "nodes": [{"id": 101, "x": 0, "y": 0, "z": 0}, {"id": 102, "x": 6000, "y": 0, "z": 0}],
-    "node_disp": {"lc_101": [{"id": 101, "ux": 1.25, "uy": 0, "uz": 0, "rx": 0, "ry": 0, "rz": 0}]},
-    "node_reactions": {"lc_101": [{"id": 101, "fx": 10, "fy": 20, "fz": 30, "mx": 1, "my": 2, "mz": 3}]},
+    "node_disp": {"lc_101": [
+        {"id": 101, "ux": 0.00125, "uy": 0, "uz": 0, "rx": 0, "ry": 0, "rz": 0},
+        {"id": 102, "ux": 0, "uy": 0, "uz": 0, "rx": 0, "ry": 0, "rz": 0},
+    ]},
+    "node_reactions": {"lc_101": [
+        {"id": 101, "fx": 10, "fy": 20, "fz": 30, "mx": 1, "my": 2, "mz": 3},
+        {"id": 102, "fx": 0, "fy": 0, "fz": 0, "mx": 0, "my": 0, "mz": 0},
+    ]},
     "members": {
         "columns": [],
         "beams": [{"id": 500, "tot_id": 500, "floor": 1, "node_i": 101, "node_j": 102, "sequence": 1}],
@@ -82,7 +97,7 @@ extracted = {
     },
     "member_forces": {
         "columns": {"lc_101": []},
-        "beams": {"lc_101": [{"id": 500, "tot_id": 500, "floor": 1, "sequence": 1, "sections": [[1, 2, 3, 4, 5, 6]]}]},
+        "beams": {"lc_101": [{"id": 500, "tot_id": 500, "floor": 1, "sequence": 1, "sections": [[10, 0, 3, 4, -5, 6], [0, -6, 0, 0, 2, 1]]}]},
         "braces": {"lc_101": []},
     },
     "floor_stats": [],
@@ -100,12 +115,31 @@ result = driver._build_analysis_result(
 
 assert result["displacements"]["N1"]["ux"] == 0.00125
 assert result["reactions"]["N1"]["fx"] == 10
-assert result["forces"]["B1"]["N"] == 5
+assert result["forces"]["B1"]["N"] == -5
+assert result["forces"]["B1"]["My"] == -6
+assert result["forces"]["B1"]["Mz"] == 10
+assert result["forces"]["B1"]["V"] == 5
+assert result["forces"]["B1"]["M"] == 10
 assert result["caseResults"]["lc_101"]["name"] == "DL"
 assert result["caseResults"]["lc_101"]["reactions"]["N1"]["R"] > 0
 assert result["envelopeTables"]["nodeReaction"]["N1"]["maxAbsReaction"] > 0
 assert result["envelopeTables"]["nodeReaction"]["N1"]["fx"] == 10
 assert "Fx" not in result["envelopeTables"]["nodeReaction"]["N1"]
+incomplete = {**extracted, "node_reactions": {"lc_101": []}}
+try:
+    driver._build_analysis_result(
+        extracted=incomplete,
+        mapping=mapping,
+        ydb_path="model.ydb",
+        yjk_project="model.yjk",
+        work_dir="work",
+        results_path="results.json",
+        steps=[],
+    )
+except RuntimeError as error:
+    assert "reaction nodes do not exactly cover" in str(error)
+else:
+    raise AssertionError("incomplete YJK result must fail closed")
 print("ok")
 `;
 
@@ -130,6 +164,11 @@ extract_path = Path(r"${repoRoot}") / "backend" / "src" / "agent-skills" / "anal
 spec = importlib.util.spec_from_file_location("extract_results_under_test", extract_path)
 extract_results = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(extract_results)
+
+assert extract_results._normalize_sections((2, [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [0, 0, 0, 0, 0, 0]])) == [
+    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+]
 
 class FakePostGjKind:
     def __str__(self):

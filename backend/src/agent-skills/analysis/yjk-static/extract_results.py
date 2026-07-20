@@ -159,6 +159,16 @@ def _to_float(value, default=0.0):
         return default
 
 
+def _finite_result_float(value, label):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("YJK result %s is not numeric" % label) from error
+    if not math.isfinite(number):
+        raise RuntimeError("YJK result %s is not finite" % label)
+    return number
+
+
 def _as_list(value):
     if value is None:
         return []
@@ -387,7 +397,7 @@ def _node_vector_entry(node_id, vector, labels):
         return None
     entry = {"id": int(node_id)}
     for idx, label in enumerate(labels):
-        entry[label] = _to_float(values[idx])
+        entry[label] = _finite_result_float(values[idx], "node %s %s" % (node_id, label))
     return entry
 
 
@@ -556,7 +566,12 @@ def _numeric_row(row):
 
     if len(values) < 6:
         return None
-    return [_to_float(value) for value in values[:6]]
+    if any(value is None for value in values[:6]):
+        return None
+    return [
+        _finite_result_float(value, "member force[%s]" % index)
+        for index, value in enumerate(values[:6])
+    ]
 
 
 def _normalize_sections(raw):
@@ -587,7 +602,7 @@ def _normalize_sections(raw):
         if len(rows) == n_sect:
             rows = rows[:n_sect]
         elif len(rows) > n_sect:
-            rows = rows[1:n_sect + 1]
+            rows = rows[:n_sect]
 
     sections = []
     for row in rows:
@@ -870,12 +885,12 @@ def extract():
 
     node_ids_seen = set()
 
-    # 1. Node coordinates (mm)
+    # 1. Node coordinates (YJK returns model-length coordinates, normally metres)
     for jd in range(1, n_nodes + 1):
         result["nodes"].append(_node_coordinate_entry(pre, debug, jd))
         node_ids_seen.add(jd)
 
-    # 2. Node displacements and reactions per load case (mm / rad, force / moment)
+    # 2. Node displacements and reactions per load case (m / rad, force / moment)
     for case in load_cases:
         key = case["key"]
         result["node_disp"][key] = []
@@ -940,6 +955,32 @@ def extract():
         result["nodes"].append(_node_coordinate_entry(pre, debug, node_id))
         node_ids_seen.add(node_id)
         _append_node_results(result, debug, YJKSDsnDataPy, node_id, load_cases)
+
+    referenced_node_ids = {
+        node_id
+        for raw_members in members_by_category.values()
+        for member in raw_members
+        for field in ("node_i", "node_j")
+        for node_id in [_to_int(member.get(field), None)]
+        if node_id is not None and node_id > 0
+    }
+    if referenced_node_ids:
+        result["meta"]["n_nodes_reported"] = n_nodes
+        result["nodes"] = [
+            node for node in result["nodes"]
+            if _to_int(node.get("id"), None) in referenced_node_ids
+        ]
+        for case in load_cases:
+            key = case["key"]
+            result["node_disp"][key] = [
+                row for row in result["node_disp"].get(key, [])
+                if _to_int(row.get("id"), None) in referenced_node_ids
+            ]
+            result["node_reactions"][key] = [
+                row for row in result["node_reactions"].get(key, [])
+                if _to_int(row.get("id"), None) in referenced_node_ids
+            ]
+        result["meta"]["n_nodes"] = len(referenced_node_ids)
 
     for case in load_cases:
         key = case["key"]
