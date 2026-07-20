@@ -196,13 +196,13 @@ function writePkpmApiStub(stubsDir) {
       '    def SetConcreteGrade(self, grade): calls.append({"method": "Column.SetConcreteGrade", "grade": grade, "pmid": self.pmid})',
       '    def SetSteelGrade(self, grade): calls.append({"method": "Column.SetSteelGrade", "grade": grade, "pmid": self.pmid})',
       '    def SetSpecial(self, key, value): calls.append({"method": "Column.SetSpecial", "key": key, "value": value, "pmid": self.pmid})',
-      '    def GetPmid(self): return self.pmid',
+      '    def GetID(self): return self.pmid',
       '',
       'class Beam:',
       '    def __init__(self, pmid): self.pmid = pmid',
       '    def SetConcreteGrade(self, grade): calls.append({"method": "Beam.SetConcreteGrade", "grade": grade, "pmid": self.pmid})',
       '    def SetSteelGrade(self, grade): calls.append({"method": "Beam.SetSteelGrade", "grade": grade, "pmid": self.pmid})',
-      '    def GetPmid(self): return self.pmid',
+      '    def GetID(self): return self.pmid',
       '',
       'class StandFloor:',
       '    def __init__(self, floor_index=1):',
@@ -220,7 +220,7 @@ function writePkpmApiStub(stubsDir) {
       '    def AddColumn(self, section, node_id):',
       '        col = Column(self.next_column)',
       '        self.next_column += 1',
-      '        calls.append({"method": "StandFloor.AddColumn", "section": section, "node": node_id, "pmid": col.GetPmid()})',
+      '        calls.append({"method": "StandFloor.AddColumn", "section": section, "node": node_id, "pmid": col.GetID()})',
       '        return col',
       '    def AddLineNet(self, start, end):',
       '        net = Net(self.next_net)',
@@ -230,7 +230,7 @@ function writePkpmApiStub(stubsDir) {
       '    def AddBeamEx(self, section, net_id, *args):',
       '        beam = Beam(self.next_beam)',
       '        self.next_beam += 1',
-      '        calls.append({"method": "StandFloor.AddBeamEx", "section": section, "net": net_id, "pmid": beam.GetPmid(), "args": list(args)})',
+      '        calls.append({"method": "StandFloor.AddBeamEx", "section": section, "net": net_id, "pmid": beam.GetID(), "args": list(args)})',
       '        return beam',
       '',
       'class RealFloor:',
@@ -1079,6 +1079,24 @@ describe('PKPM frame analysis flow', () => {
     expect(payload.result).toBeUndefined();
     expect(payload.error).toContain('must be horizontal in the global X-Y floor plane');
     expect(findCalls(payload, 'StandFloor.AddNode')).toHaveLength(0);
+  });
+
+  test('allows empty floor_loads when convenience dead/live fields provide the loads', () => {
+    const model = buildRcUserScenarioModel();
+    model.stories = model.stories.map((story, index) => ({
+      ...story,
+      floor_loads: [],
+      dead_load: index === 0 ? 4.5 : 5,
+      live_load: index === 0 ? 2 : 3,
+    }));
+    model.load_cases = model.load_cases.map((loadCase) => ({ ...loadCase, loads: [] }));
+
+    const payload = runPkpmRuntime(model);
+
+    expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
+      expect.objectContaining({ floor: 1, dead: 4.5, live: 2 }),
+      expect.objectContaining({ floor: 2, dead: 5, live: 3 }),
+    ]);
   });
 
   test('fails closed when PKPM result rows do not cover the converted model', () => {

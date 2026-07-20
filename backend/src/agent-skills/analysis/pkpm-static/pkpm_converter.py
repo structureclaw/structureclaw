@@ -71,13 +71,13 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _require_member_pmid(member: Any, *, element_id: str, member_type: str) -> int:
-    get_pmid = getattr(member, "GetPmid", None)
-    if not callable(get_pmid):
+def _require_member_id(member: Any, *, element_id: str, member_type: str) -> int:
+    get_id = getattr(member, "GetID", None)
+    if not callable(get_id):
         raise RuntimeError(
             f"PKPM {member_type} '{element_id}' did not expose its result member ID"
         )
-    pmid = int(get_pmid())
+    pmid = int(get_id())
     if pmid <= 0:
         raise RuntimeError(
             f"PKPM {member_type} '{element_id}' returned an invalid result member ID {pmid}"
@@ -388,7 +388,7 @@ def _normalize_generic_frame_for_pkpm(data: dict) -> tuple[dict, dict[str, Any]]
         if not story_id or story_id in story_ids:
             raise ValueError("PKPM conversion requires unique non-empty story ids")
         declared_loads = story.get("floor_loads")
-        if declared_loads is not None:
+        if declared_loads:
             if not isinstance(declared_loads, list):
                 raise ValueError(f"Story '{story_id}' floor_loads must be a list")
             load_values: dict[str, float] = {}
@@ -1134,7 +1134,7 @@ def convert_v2_to_jws(
                             f"PKPM failed to preserve pinned support at plan node {pm_node_id}"
                         ) from error
                 plan_nodes_with_col.add(pm_node_id)
-                _col_pmid_cache[pm_node_id] = _require_member_pmid(
+                _col_pmid_cache[pm_node_id] = _require_member_id(
                     col_obj,
                     element_id=str(elem.get("id", "")),
                     member_type="column",
@@ -1165,7 +1165,7 @@ def convert_v2_to_jws(
                     beam_obj.SetSteelGrade(steel_grade)
                 else:
                     beam_obj.SetConcreteGrade(concrete_grade)
-                _beam_pmid_cache[net_key] = _require_member_pmid(
+                _beam_pmid_cache[net_key] = _require_member_id(
                     beam_obj,
                     element_id=str(elem.get("id", "")),
                     member_type="beam",
