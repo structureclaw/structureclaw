@@ -11,6 +11,72 @@ import { buildElementReferenceVectors } from '../../../dist/agent-runtime/refere
 import { skillExecutionSchema } from '../../../dist/agent-runtime/schema.js';
 
 describe('agent runtime helper utilities', () => {
+  test('loads structural handlers from the active backend build', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const cases = [
+      {
+        skillId: 'beam',
+        dimension: '2d',
+        state: {
+          inferredType: 'beam',
+          skillId: 'beam',
+          lengthM: 3,
+          supportType: 'cantilever',
+          loadKN: 10,
+          loadType: 'point',
+          loadPosition: 'midspan',
+        },
+      },
+      {
+        skillId: 'frame',
+        dimension: '3d',
+        state: {
+          inferredType: 'frame',
+          skillId: 'frame',
+          frameDimension: '3d',
+          storyCount: 1,
+          bayCountX: 1,
+          bayCountY: 1,
+          storyHeightsM: [3],
+          bayWidthsXM: [6],
+          bayWidthsYM: [5],
+          floorLoads: [{ story: 1, verticalKN: 10 }],
+          frameBaseSupportType: 'fixed',
+        },
+      },
+      {
+        skillId: 'concrete-frame',
+        dimension: '2d',
+        state: {
+          inferredType: 'concrete-frame',
+          skillId: 'concrete-frame',
+          frameDimension: '2d',
+          storyCount: 2,
+          bayCount: 1,
+          storyHeightsM: [3, 3],
+          bayWidthsM: [6],
+          floorLoads: [
+            { story: 1, verticalKN: 10 },
+            { story: 2, verticalKN: 10 },
+          ],
+          frameBaseSupportType: 'fixed',
+        },
+      },
+    ];
+
+    for (const fixture of cases) {
+      const model = await runtime.buildModel(fixture.state, [fixture.skillId]);
+      expect(model?.coordinate_system).toEqual({
+        semantics: 'global-z-up',
+        version: 1,
+        dimension: fixture.dimension,
+        plane: fixture.dimension === '2d' ? 'xz' : null,
+        dof_order: ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'],
+      });
+    }
+  });
+
   test('resolves structure type key aliases to the owning skill plugin', async () => {
     const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
     const runtime = new AgentSkillRuntime();

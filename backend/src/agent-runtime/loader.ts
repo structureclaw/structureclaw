@@ -52,6 +52,10 @@ function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): 
 }
 
 const COMPILED_MODULE_SKILL_ROOT_CANDIDATES = [
+  // Prefer handlers adjacent to the loader that is actually executing. This
+  // prevents a stale packaged dist/backend tree from shadowing backend/dist
+  // during repository-local builds and benchmark runs.
+  path.resolve(MODULE_DIR, '../agent-skills'),
   // Installed-package layout: dist/backend/ holds compiled JS next to dist/frontend/
   path.resolve(process.cwd(), 'dist/backend/agent-skills'),
   path.resolve(process.cwd(), 'backend/dist/agent-skills'),
