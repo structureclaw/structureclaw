@@ -367,6 +367,61 @@ function buildTrussTopElevation(topology: string, x: number, span: number, heigh
   return height;
 }
 
+function buildExplicitTrussTopology(state: DraftState): {
+  nodes: Array<Record<string, unknown>>;
+  elements: Array<Record<string, unknown>>;
+} | null {
+  const topology = state.engineeringDraft?.topology;
+  if (!topology?.nodes?.length || !topology.members?.length) return null;
+  const nodeIds = new Set(topology.nodes.map((node) => node.id));
+  if (nodeIds.size !== topology.nodes.length
+    || topology.members.some((member) => !nodeIds.has(member.nodes[0]) || !nodeIds.has(member.nodes[1]))) {
+    return null;
+  }
+
+  const nodes = topology.nodes.map((node) => ({
+    id: node.id,
+    x: node.x,
+    y: node.y,
+    z: node.z,
+    ...(node.restraints ? { restraints: [...node.restraints] } : {}),
+  }));
+  if (!nodes.some((node) => 'restraints' in node)) {
+    const minZ = Math.min(...topology.nodes.map((node) => node.z));
+    const baseNodes = topology.nodes
+      .filter((node) => Math.abs(node.z - minZ) <= 1e-9)
+      .sort((left, right) => left.x - right.x || left.y - right.y);
+    const left = nodes.find((node) => node.id === baseNodes[0]?.id);
+    const right = nodes.find((node) => node.id === baseNodes[baseNodes.length - 1]?.id);
+    if (left) left.restraints = [...PINNED_RESTRAINT];
+    if (right && right !== left) right.restraints = [...ROLLER_X_RESTRAINT];
+  }
+
+  return {
+    nodes,
+    elements: topology.members.map((member, index) => ({
+      id: member.id ?? `E${index + 1}`,
+      type: 'truss',
+      nodes: [...member.nodes],
+      material: '1',
+      section: '1',
+    })),
+  };
+}
+
+function buildExplicitTrussLoads(
+  state: DraftState,
+  nodeIds: Set<string>,
+): Array<Record<string, unknown>> {
+  return (state.engineeringDraft?.loads ?? []).flatMap((load) => {
+    const target = load.target?.trim();
+    if (!target || !nodeIds.has(target) || (load.kind !== 'point' && load.kind !== 'nodal')) return [];
+    const component = load.direction === 'globalX' ? 'fx' : load.direction === 'globalY' ? 'fy' : 'fz';
+    const sign = component === 'fz' ? -1 : 1;
+    return [{ node: target, [component]: sign * load.magnitude }];
+  });
+}
+
 function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
   const span = state.lengthM!;
   const panelCount = clampTrussPanelCount(state.bayCount, span);
@@ -376,10 +431,11 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
   const panelLength = span / panelCount;
   const fixed = [...PINNED_RESTRAINT];
   const roller = [...ROLLER_X_RESTRAINT];
-  const nodes: Array<Record<string, unknown>> = [];
-  const elements: Array<Record<string, unknown>> = [];
+  const explicitTopology = buildExplicitTrussTopology(state);
+  const nodes: Array<Record<string, unknown>> = explicitTopology?.nodes ?? [];
+  const elements: Array<Record<string, unknown>> = explicitTopology?.elements ?? [];
 
-  for (let i = 0; i <= panelCount; i += 1) {
+  for (let i = 0; !explicitTopology && i <= panelCount; i += 1) {
     const node: Record<string, unknown> = {
       id: `B${i}`,
       x: i * panelLength,
@@ -394,7 +450,7 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
     nodes.push(node);
   }
 
-  for (let i = 0; i <= panelCount; i += 1) {
+  for (let i = 0; !explicitTopology && i <= panelCount; i += 1) {
     const x = i * panelLength;
     nodes.push({
       id: `T${i}`,
@@ -404,7 +460,7 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
     });
   }
 
-  for (let i = 0; i < panelCount; i += 1) {
+  for (let i = 0; !explicitTopology && i < panelCount; i += 1) {
     elements.push({
       id: `BC${i}`,
       type: 'truss',
@@ -421,7 +477,7 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
     });
   }
 
-  for (let i = 0; i <= panelCount; i += 1) {
+  for (let i = 0; !explicitTopology && i <= panelCount; i += 1) {
     elements.push({
       id: `WV${i}`,
       type: 'truss',
@@ -448,7 +504,10 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
   const loadNodeIndexes = state.loadPosition === 'middle-joint'
     ? [Math.max(1, Math.min(panelCount - 1, Math.round(panelCount / 2)))]
     : Array.from({ length: Math.max(0, panelCount - 1) }, (_, index) => index + 1);
-  const nodalLoads = loadNodeIndexes.map((index) => ({ node: `${loadPrefix}${index}`, fz: -load }));
+  const explicitLoads = buildExplicitTrussLoads(state, new Set(nodes.map((node) => String(node.id))));
+  const nodalLoads = explicitLoads.length > 0
+    ? explicitLoads
+    : loadNodeIndexes.map((index) => ({ node: `${loadPrefix}${index}`, fz: -load }));
 
   return {
     schema_version: '2.0.0',
@@ -468,6 +527,7 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
     metadata: {
       ...metadata,
       trussTopology: topology,
+      topologySource: explicitTopology ? 'engineering-draft' : 'generated',
       loadChord,
       panelCount,
       panelCountDefaulted: state.bayCount === undefined,

@@ -23,6 +23,24 @@ export interface EngineeringDraftGeometry {
   bayWidthsYM?: number[];
 }
 
+export interface EngineeringDraftTopologyNode {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  restraints?: boolean[];
+}
+
+export interface EngineeringDraftTopologyMember {
+  id?: string;
+  nodes: [string, string];
+}
+
+export interface EngineeringDraftTopology {
+  nodes?: EngineeringDraftTopologyNode[];
+  members?: EngineeringDraftTopologyMember[];
+}
+
 export interface EngineeringDraftMaterial {
   family?: MaterialFamily;
   grade?: string;
@@ -65,6 +83,7 @@ export interface EngineeringDraftAnalysis {
 export interface EngineeringDraft {
   structureType?: StructuralTypeKey;
   geometry?: EngineeringDraftGeometry;
+  topology?: EngineeringDraftTopology;
   material?: EngineeringDraftMaterial;
   sections?: EngineeringDraftSections;
   boundary?: EngineeringDraftBoundary;

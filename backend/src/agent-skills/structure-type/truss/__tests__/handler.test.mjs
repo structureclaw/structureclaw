@@ -182,6 +182,54 @@ describe('truss handler', () => {
     expect(model.load_cases[0].loads.reduce((sum, load) => sum + Math.abs(load.fz), 0)).toBe(40);
   });
 
+  test('preserves explicit truss topology and node-targeted loads', () => {
+    const explicitMembers = [
+      ['BC0', 'B0', 'B1'],
+      ['BC1', 'B1', 'B2'],
+      ['TC0', 'T0', 'T1'],
+      ['TC1', 'T1', 'T2'],
+      ['WV0', 'B0', 'T0'],
+      ['WV1', 'B1', 'T1'],
+      ['WV2', 'B2', 'T2'],
+      ['WD0', 'T0', 'B1'],
+      ['WD1', 'T1', 'B2'],
+    ];
+    const patch = handler.extractDraft({
+      message: 'Use the explicitly listed truss nodes, members, supports, and loads.',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 6, heightM: 2, spanLengthsM: [3, 3] },
+          topology: {
+            nodes: [
+              { id: 'B0', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+              { id: 'B1', x: 3, y: 0, z: 0 },
+              { id: 'B2', x: 6, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+              { id: 'T0', x: 0, y: 0, z: 2 },
+              { id: 'T1', x: 3, y: 0, z: 2 },
+              { id: 'T2', x: 6, y: 0, z: 2 },
+            ],
+            members: explicitMembers.map(([id, start, end]) => ({ id, nodes: [start, end] })),
+          },
+          loads: [
+            { kind: 'nodal', magnitude: 10, unit: 'kN', direction: 'gravity', target: 'B1' },
+            { kind: 'nodal', magnitude: 20, unit: 'kN', direction: 'globalX', target: 'T1' },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(model.nodes).toHaveLength(6);
+    expect(model.elements.map((element) => [element.id, ...element.nodes])).toEqual(explicitMembers);
+    expect(model.load_cases[0].loads).toEqual([
+      expect.objectContaining({ node: 'B1', fz: -10 }),
+      expect.objectContaining({ node: 'T1', fx: 20 }),
+    ]);
+    expect(model.metadata).toEqual(expect.objectContaining({ topologySource: 'engineering-draft' }));
+  });
+
   test('defaults missing truss height from span while preserving model match scale', () => {
     const patch = handler.extractDraft({
       message: 'A triangular roof truss spans 15m with 5 panels and 10kN vertical nodal loads. Run static analysis.',
@@ -279,6 +327,29 @@ describe('truss handler', () => {
     const missing = handler.computeMissing(state, 'execution');
 
     expect(missing.critical).toContain('trussTopology');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
+  test('does not clear a topology conflict reported only through draftIssues', () => {
+    const patch = handler.extractDraft({
+      message: 'Please analyze a Pratt truss with no web members.',
+      llmDraftPatch: {
+        ...prattTrussPatch,
+        skillState: {
+          trussTopology: 'pratt',
+        },
+        draftIssues: [{
+          field: 'trussTopology',
+          severity: 'conflict',
+          reason: 'A Pratt truss requires web members.',
+          question: 'Should web members be added?',
+        }],
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.skillState?.invalidDraftFields).toContain('trussTopology');
+    expect(handler.computeMissing(state, 'execution').critical).toContain('trussTopology');
     expect(handler.buildModel(state)).toBeUndefined();
   });
 

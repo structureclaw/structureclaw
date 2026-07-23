@@ -58,12 +58,23 @@ function getInvalidFields(state: DraftState | DraftExtraction | undefined): stri
 
 function validPatchFields(patch: DraftExtraction): string[] {
   const fields: string[] = [];
+  const issueFields = new Set(
+    patch.draftIssues
+      ?.filter((issue) => issue.severity === 'invalid' || issue.severity === 'ambiguous' || issue.severity === 'conflict')
+      .map((issue) => issue.field)
+      .filter((field): field is string => typeof field === 'string') ?? [],
+  );
   for (const field of ['lengthM', 'heightM', 'bayCount', 'loadKN'] as const) {
-    if (typeof patch[field] === 'number' && Number.isFinite(patch[field]) && patch[field] > 0) {
+    if (!issueFields.has(field)
+      && typeof patch[field] === 'number'
+      && Number.isFinite(patch[field])
+      && patch[field] > 0) {
       fields.push(field);
     }
   }
-  if (patch.skillState?.trussTopology && !patch.skillState.trussTopologyConflict) {
+  if (patch.skillState?.trussTopology
+    && !patch.skillState.trussTopologyConflict
+    && !issueFields.has('trussTopology')) {
     fields.push('trussTopology');
   }
   return fields;

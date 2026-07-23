@@ -11,6 +11,9 @@ import type {
   EngineeringDraftLoadDirection,
   EngineeringDraftLoadKind,
   EngineeringDraftLoadUnit,
+  EngineeringDraftTopology,
+  EngineeringDraftTopologyMember,
+  EngineeringDraftTopologyNode,
   FrameBaseSupportType,
   InferredModelType,
   MaterialFamily,
@@ -69,6 +72,46 @@ function nonNegativeNumberArray(value: unknown): number[] | undefined {
 
 function normalizeString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeTopologyNode(value: unknown): EngineeringDraftTopologyNode | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const id = normalizeString(raw.id);
+  const x = finiteNumber(raw.x);
+  const y = finiteNumber(raw.y);
+  const z = finiteNumber(raw.z);
+  if (!id || x === undefined || y === undefined || z === undefined) return undefined;
+  const restraints = Array.isArray(raw.restraints)
+    && raw.restraints.length === 6
+    && raw.restraints.every((item) => typeof item === 'boolean')
+    ? [...raw.restraints] as boolean[]
+    : undefined;
+  return { id, x, y, z, restraints };
+}
+
+function normalizeTopologyMember(value: unknown): EngineeringDraftTopologyMember | undefined {
+  const raw = asRecord(value);
+  if (!raw || !Array.isArray(raw.nodes) || raw.nodes.length !== 2) return undefined;
+  const start = normalizeString(raw.nodes[0]);
+  const end = normalizeString(raw.nodes[1]);
+  if (!start || !end || start === end) return undefined;
+  return {
+    id: normalizeString(raw.id),
+    nodes: [start, end],
+  };
+}
+
+function normalizeEngineeringTopology(value: unknown): EngineeringDraftTopology | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const nodes = Array.isArray(raw.nodes)
+    ? raw.nodes.map(normalizeTopologyNode).filter((node): node is EngineeringDraftTopologyNode => node !== undefined)
+    : undefined;
+  const members = Array.isArray(raw.members)
+    ? raw.members.map(normalizeTopologyMember).filter((member): member is EngineeringDraftTopologyMember => member !== undefined)
+    : undefined;
+  return nodes?.length || members?.length ? { nodes, members } : undefined;
 }
 
 function normalizeMaterialFamily(value: unknown): MaterialFamily | undefined {
@@ -285,6 +328,7 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
   const draft: EngineeringDraft = {
     structureType: normalizeString(raw.structureType) as EngineeringDraft['structureType'],
     geometry,
+    topology: normalizeEngineeringTopology(raw.topology),
     material,
     sections,
     boundary,
@@ -309,6 +353,7 @@ export function mergeEngineeringDraft(
   return {
     structureType: patch.structureType ?? existing.structureType,
     geometry: { ...(existing.geometry ?? {}), ...(patch.geometry ?? {}) },
+    topology: { ...(existing.topology ?? {}), ...(patch.topology ?? {}) },
     material: { ...(existing.material ?? {}), ...(patch.material ?? {}) },
     sections: { ...(existing.sections ?? {}), ...(patch.sections ?? {}) },
     boundary: { ...(existing.boundary ?? {}), ...(patch.boundary ?? {}) },
