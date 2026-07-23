@@ -1273,12 +1273,16 @@ class StaticAnalyzer:
                     if not lc:
                         continue
                     case_load_count = 0
+                    has_derived_floor_loads = False
                     for load in lc.loads:
+                        if self._is_derived_story_floor_load(load):
+                            has_derived_floor_loads = True
+                            continue
                         normalized = self._normalize_load(load)
                         if normalized is not None:
                             explicit_loads.append(self._scale_load(normalized, float(factor)))
                             case_load_count += 1
-                    if case_load_count == 0:
+                    if case_load_count == 0 or has_derived_floor_loads:
                         floor_specs.extend(self._floor_load_specs_for_case(lc, float(factor)))
                 if combo_found:
                     expanded_floor_loads = self._expand_story_floor_loads(parameters, floor_specs)
@@ -1290,12 +1294,16 @@ class StaticAnalyzer:
             if not isinstance(lc, dict):
                 continue
             case_load_count = 0
+            has_derived_floor_loads = False
             for load in lc.get('loads', []):
+                if self._is_derived_story_floor_load(load):
+                    has_derived_floor_loads = True
+                    continue
                 normalized = self._normalize_load(load)
                 if normalized is not None:
                     explicit_loads.append(normalized)
                     case_load_count += 1
-            if case_load_count == 0:
+            if case_load_count == 0 or has_derived_floor_loads:
                 parameter_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
 
         if parameter_floor_specs:
@@ -1310,12 +1318,16 @@ class StaticAnalyzer:
             for lc in self.model.load_cases:
                 if lc.id in allowed:
                     case_load_count = 0
+                    has_derived_floor_loads = False
                     for load in lc.loads:
+                        if self._is_derived_story_floor_load(load):
+                            has_derived_floor_loads = True
+                            continue
                         normalized = self._normalize_load(load)
                         if normalized is not None:
                             explicit_loads.append(normalized)
                             case_load_count += 1
-                    if case_load_count == 0:
+                    if case_load_count == 0 or has_derived_floor_loads:
                         selected_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
             if selected_floor_specs:
                 return explicit_loads + self._expand_story_floor_loads(parameters, selected_floor_specs)
@@ -1324,12 +1336,16 @@ class StaticAnalyzer:
         default_floor_specs: List[Dict[str, Any]] = []
         for lc in self.model.load_cases:
             case_load_count = 0
+            has_derived_floor_loads = False
             for load in lc.loads:
+                if self._is_derived_story_floor_load(load):
+                    has_derived_floor_loads = True
+                    continue
                 normalized = self._normalize_load(load)
                 if normalized is not None:
                     explicit_loads.append(normalized)
                     case_load_count += 1
-            if case_load_count == 0:
+            if case_load_count == 0 or has_derived_floor_loads:
                 default_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
 
         if default_floor_specs:
@@ -1339,6 +1355,9 @@ class StaticAnalyzer:
             return explicit_loads
 
         return self._expand_story_floor_loads(parameters)
+
+    def _is_derived_story_floor_load(self, load: Any) -> bool:
+        return self._get_field(load, 'source', None) == 'story_floor_loads'
 
     def _floor_load_specs_for_case(self, load_case: Any, factor: float) -> List[Dict[str, Any]]:
         load_case_id = str(self._get_field(load_case, 'id', ''))

@@ -425,6 +425,39 @@ class FloorLoadExpansionTest(unittest.TestCase):
             "forces": [0.0, 0.0, -10.0, 0.0, 0.0, 0.0],
         }])
 
+    def test_replaces_generated_story_nodal_loads_with_slab_to_beam_transfer(self) -> None:
+        model = build_model(
+            include_floor_beams=True,
+            load_cases=[
+                {
+                    "id": "D",
+                    "type": "dead",
+                    "loads": [
+                        {
+                            "type": "nodal",
+                            "node": node,
+                            "fz": -36.0,
+                            "source": "story_floor_loads",
+                            "load_kind": "dead",
+                        }
+                        for node in ("T1", "T2", "T3", "T4")
+                    ],
+                },
+            ],
+            load_combinations=[
+                {"id": "ULS", "factors": {"D": 1.0}},
+            ],
+        )
+        analyzer = StaticAnalyzer(model)
+
+        loads = analyzer._collect_nodal_loads({"loadCombinationId": "ULS"})
+
+        self.assertEqual(len(loads), 4)
+        self.assertTrue(all(load["type"] == "distributed" for load in loads))
+        self.assertEqual({load["element"] for load in loads}, {"X0", "X1", "Y0", "Y1"})
+        self.assertAlmostEqual(sum(-piecewise_resultant(load, 6.0) for load in loads), 144.0)
+        self.assertEqual(analyzer._floor_load_transfer_summary()["effectiveMode"], "two_way_slab")
+
 
 if __name__ == "__main__":
     unittest.main()
