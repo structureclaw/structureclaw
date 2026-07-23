@@ -111,7 +111,6 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
       }
     }
   }
-
   return {
     schema_version: '2.0.0',
     unit_system: 'SI',
@@ -821,17 +820,128 @@ function buildSemanticBeamModel(
   };
 }
 
+const COLUMN_CONCRETE_MATERIALS: Record<string, { E: number; G: number; fc: number }> = {
+  C20: { E: 25500, G: 10625, fc: 9.6 },
+  C25: { E: 28000, G: 11667, fc: 11.9 },
+  C30: { E: 30000, G: 12500, fc: 14.3 },
+  C35: { E: 31500, G: 13125, fc: 16.7 },
+  C40: { E: 32500, G: 13542, fc: 19.1 },
+  C45: { E: 33500, G: 13958, fc: 21.1 },
+  C50: { E: 34500, G: 14375, fc: 23.1 },
+  C55: { E: 35500, G: 14792, fc: 25.3 },
+  C60: { E: 36000, G: 15000, fc: 27.5 },
+};
+
+const COLUMN_STEEL_SECTIONS: Record<string, {
+  name: string;
+  standardSteelName: string;
+  shape: { kind: 'H'; H: number; B: number; tw: number; tf: number };
+  properties: { A: number; Iy: number; Iz: number; J: number; G: number };
+}> = {
+  HW300X300: {
+    name: 'HW300x300',
+    standardSteelName: 'HW300x300',
+    shape: { kind: 'H', H: 300, B: 300, tw: 10, tf: 15 },
+    properties: { A: 0.01192, Iy: 2.04e-4, Iz: 6.75e-5, J: 4.23e-6, G: 79000 },
+  },
+};
+
+function solidRectangularTorsionConstant(width: number, depth: number): number {
+  const a = Math.max(width, depth);
+  const b = Math.min(width, depth);
+  const aspect = b / a;
+  return a * b ** 3 * (1 / 3 - 0.21 * aspect * (1 - b ** 4 / (12 * a ** 4)));
+}
+
+function buildColumnMaterial(
+  state: DraftState,
+  materialFamily: 'concrete' | 'steel',
+): { record: Record<string, unknown>; G: number } {
+  if (materialFamily === 'steel') {
+    return buildPortalFrameMaterial(state);
+  }
+  const requestedGrade = state.engineeringDraft?.material?.grade?.trim().toUpperCase() || 'C30';
+  const grade = COLUMN_CONCRETE_MATERIALS[requestedGrade] ? requestedGrade : 'C30';
+  const properties = COLUMN_CONCRETE_MATERIALS[grade];
+  return {
+    record: {
+      id: '1',
+      name: grade,
+      grade,
+      category: 'concrete',
+      E: properties.E,
+      nu: 0.2,
+      rho: 2500,
+      fc: properties.fc,
+    },
+    G: properties.G,
+  };
+}
+
+function buildColumnSection(
+  state: DraftState,
+  materialFamily: 'concrete' | 'steel',
+  materialName: string,
+  G: number,
+  sectionWidthM: number,
+  sectionDepthM: number,
+): Record<string, unknown> {
+  if (materialFamily === 'concrete') {
+    const width = sectionWidthM * 1000;
+    const height = sectionDepthM * 1000;
+    return {
+      id: '1',
+      name: `${materialName} ${width}x${height}`,
+      type: 'rect',
+      purpose: 'column',
+      width,
+      height,
+      shape: { kind: 'rectangular', B: width, H: height },
+      properties: {
+        A: sectionWidthM * sectionDepthM,
+        Iy: sectionWidthM * sectionDepthM ** 3 / 12,
+        Iz: sectionDepthM * sectionWidthM ** 3 / 12,
+        J: solidRectangularTorsionConstant(sectionWidthM, sectionDepthM),
+        G,
+      },
+    };
+  }
+
+  const raw = state.engineeringDraft?.sections?.column
+    ?? state.engineeringDraft?.sections?.member
+    ?? state.engineeringDraft?.sections?.beam;
+  const normalized = raw?.trim().toUpperCase().replace(/[×*]/g, 'X').replace(/\s+/g, '');
+  const catalogKey = normalized === 'H300X300' ? 'HW300X300' : normalized;
+  const catalog = catalogKey ? COLUMN_STEEL_SECTIONS[catalogKey] : undefined;
+  if (catalog) {
+    return {
+      id: '1',
+      name: catalog.name,
+      type: 'H',
+      purpose: 'column',
+      standard_steel_name: catalog.standardSteelName,
+      shape: catalog.shape,
+      properties: catalog.properties,
+    };
+  }
+  return { ...buildPortalFrameSection(state, G), purpose: 'column' };
+}
+
 function buildColumnModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
   const height = state.heightM ?? state.lengthM!;
   const axialLoad = state.loadKN!;
   const materialFamily = state.skillState?.materialFamily === 'concrete' ? 'concrete' : 'steel';
   const sectionWidthM = readPositiveNumber(state.skillState?.sectionWidthM) ?? 0.4;
   const sectionDepthM = readPositiveNumber(state.skillState?.sectionDepthM) ?? sectionWidthM;
-  const area = sectionWidthM * sectionDepthM;
-  const iy = (sectionWidthM * (sectionDepthM ** 3)) / 12;
-  const iz = (sectionDepthM * (sectionWidthM ** 3)) / 12;
-  const elasticModulus = materialFamily === 'concrete' ? 30000 : 205000;
-  const shearModulus = materialFamily === 'concrete' ? 12500 : 79000;
+  const material = buildColumnMaterial(state, materialFamily);
+  const section = buildColumnSection(
+    state,
+    materialFamily,
+    String(material.record.name),
+    material.G,
+    sectionWidthM,
+    sectionDepthM,
+  );
   const semanticColumnLoads = readRecordArray(state.skillState?.columnLoads);
   const modelLoads = semanticColumnLoads?.map((load) => {
     const fx = readFiniteNumber(load.fxKN);
@@ -854,14 +964,10 @@ function buildColumnModel(state: DraftState, metadata: Record<string, unknown>):
       { id: '2', x: 0, y: 0, z: height },
     ],
     elements: [
-      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+      { id: '1', type: 'column', nodes: ['1', '2'], material: '1', section: '1' },
     ],
-    materials: [
-      { id: '1', name: materialFamily, E: elasticModulus, nu: 0.2, rho: materialFamily === 'concrete' ? 2500 : 7850 },
-    ],
-    sections: [
-      { id: '1', name: 'COLUMN', type: 'beam', properties: { A: area, Iy: iy, Iz: iz, J: Math.max(iy, iz), G: shearModulus } },
-    ],
+    materials: [material.record],
+    sections: [section],
     load_cases: [
       { id: 'LC1', type: 'other', loads },
     ],
@@ -986,6 +1092,68 @@ function getPortalFrameSpanLengths(state: DraftState): number[] {
   return Array.from({ length: bayCount }, () => span);
 }
 
+function buildPortalFrameMaterial(state: DraftState): { record: Record<string, unknown>; G: number } {
+  const grade = state.engineeringDraft?.material?.grade?.trim().toUpperCase();
+  const qGrade = grade?.match(/^Q(235|345|355|390|420)$/);
+  if (qGrade) {
+    const fy = Number(qGrade[1]);
+    return {
+      record: { id: '1', name: grade, grade, category: 'steel', E: 206000, nu: 0.3, rho: 7850, fy },
+      G: 79000,
+    };
+  }
+  const sGrade = grade?.match(/^S(235|275|355)$/);
+  if (sGrade) {
+    const fy = Number(sGrade[1]);
+    return {
+      record: { id: '1', name: grade, grade, category: 'steel', E: 210000, nu: 0.3, rho: 7850, fy },
+      G: 81000,
+    };
+  }
+  if (grade === 'A36') {
+    return {
+      record: { id: '1', name: grade, grade, category: 'steel', E: 200000, nu: 0.3, rho: 7850, fy: 248 },
+      G: 77000,
+    };
+  }
+  return {
+    record: { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
+    G: 79000,
+  };
+}
+
+function buildPortalFrameSection(state: DraftState, G: number): Record<string, unknown> {
+  const raw = state.engineeringDraft?.sections?.member
+    ?? state.engineeringDraft?.sections?.beam
+    ?? state.engineeringDraft?.sections?.column;
+  const normalized = raw?.trim().toUpperCase().replace(/[×*]/g, 'X').replace(/\s+/g, '');
+  const match = normalized?.match(/^H(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G } };
+  }
+
+  const H = Number(match[1]);
+  const B = Number(match[2]);
+  const tw = Number(match[3]);
+  const tf = Number(match[4]);
+  const hw = H - 2 * tf;
+  if (hw <= 0) {
+    return { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G } };
+  }
+
+  const A = (tw * hw + 2 * B * tf) / 1e6;
+  const Iy = ((tw * hw ** 3) / 12 + (2 * B * tf ** 3) / 12 + 2 * B * tf * ((hw + tf) / 2) ** 2) / 1e12;
+  const Iz = ((2 * tf * B ** 3) / 12 + (hw * tw ** 3) / 12) / 1e12;
+  const J = (2 * B * tf ** 3 + hw * tw ** 3) / 3 / 1e12;
+  return {
+    id: '1',
+    name: normalized,
+    type: 'H',
+    shape: { kind: 'H', H, B, tw, tf },
+    properties: { A, Iy, Iz, J, G },
+  };
+}
+
 function buildPortalFrameModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
   const spans = getPortalFrameSpanLengths(state);
   const xCoordinates = accumulateCoordinates(spans);
@@ -998,6 +1166,8 @@ function buildPortalFrameModel(state: DraftState, metadata: Record<string, unkno
   const mezzanineLoad = readPositiveNumber(state.skillState?.mezzanineLoadKN);
   const hasMezzanine = mezzanineHeight !== undefined && mezzanineHeight > 0 && mezzanineHeight < height && spans.length >= 1;
   const baseRestraint = buildFixedRestraint(state.frameBaseSupportType || 'fixed');
+  const material = buildPortalFrameMaterial(state);
+  const section = buildPortalFrameSection(state, material.G);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loads: Array<Record<string, unknown>> = [];
@@ -1013,10 +1183,10 @@ function buildPortalFrameModel(state: DraftState, metadata: Record<string, unkno
 
   for (let i = 0; i < xCoordinates.length; i += 1) {
     if (hasMezzanine && i === 0) {
-      elements.push({ id: `C${i}a`, type: 'beam', nodes: [`B${i}`, 'M0'], material: '1', section: '1' });
-      elements.push({ id: `C${i}b`, type: 'beam', nodes: ['M0', `T${i}`], material: '1', section: '1' });
+      elements.push({ id: `C${i}a`, type: 'column', nodes: [`B${i}`, 'M0'], material: '1', section: '1' });
+      elements.push({ id: `C${i}b`, type: 'column', nodes: ['M0', `T${i}`], material: '1', section: '1' });
     } else {
-      elements.push({ id: `C${i}`, type: 'beam', nodes: [`B${i}`, `T${i}`], material: '1', section: '1' });
+      elements.push({ id: `C${i}`, type: 'column', nodes: [`B${i}`, `T${i}`], material: '1', section: '1' });
     }
   }
   for (let i = 0; i < spans.length; i += 1) {
@@ -1049,12 +1219,8 @@ function buildPortalFrameModel(state: DraftState, metadata: Record<string, unkno
     unit_system: 'SI',
     nodes,
     elements,
-    materials: [
-      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-    ],
-    sections: [
-      { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G: 79000 } },
-    ],
+    materials: [material.record],
+    sections: [section],
     load_cases: [
       { id: 'LC1', type: 'other', loads },
     ],

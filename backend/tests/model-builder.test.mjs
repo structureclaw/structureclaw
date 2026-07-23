@@ -255,7 +255,93 @@ describe('buildModel - truss', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Portal frame
+// 3. Column
+// ---------------------------------------------------------------------------
+describe('buildModel - column', () => {
+  it('should preserve standalone column member and section semantics', () => {
+    const state = makeState({
+      inferredType: 'column',
+      heightM: 4.2,
+      loadKN: 600,
+      engineeringDraft: {
+        material: { family: 'concrete', grade: 'C30' },
+        sections: { column: '450x450mm' },
+      },
+      skillState: {
+        materialFamily: 'concrete',
+        sectionWidthM: 0.45,
+        sectionDepthM: 0.45,
+      },
+    });
+
+    const model = buildModel(state);
+
+    expect(model.elements).toEqual([
+      { id: '1', type: 'column', nodes: ['1', '2'], material: '1', section: '1' },
+    ]);
+    expect(model.materials[0]).toMatchObject({
+      name: 'C30',
+      grade: 'C30',
+      category: 'concrete',
+      E: 30000,
+      fc: 14.3,
+    });
+    expect(model.sections[0]).toMatchObject({
+      name: 'C30 450x450',
+      type: 'rect',
+      purpose: 'column',
+      width: 450,
+      height: 450,
+      shape: { kind: 'rectangular', B: 450, H: 450 },
+    });
+    expect(model.sections[0].properties.J).toBeCloseTo(0.005775046875, 12);
+  });
+
+  it('should resolve the benchmark steel column from the standard section catalog', () => {
+    const state = makeState({
+      inferredType: 'column',
+      heightM: 5,
+      loadKN: 700,
+      engineeringDraft: {
+        material: { family: 'steel', grade: 'Q345' },
+        sections: { column: 'HW300x300' },
+      },
+      skillState: {
+        materialFamily: 'steel',
+        sectionWidthM: 0.3,
+        sectionDepthM: 0.3,
+      },
+    });
+
+    const model = buildModel(state);
+
+    expect(model.elements[0].type).toBe('column');
+    expect(model.materials[0]).toMatchObject({
+      name: 'Q345',
+      grade: 'Q345',
+      category: 'steel',
+      E: 206000,
+      fy: 345,
+    });
+    expect(model.sections[0]).toMatchObject({
+      name: 'HW300x300',
+      type: 'H',
+      purpose: 'column',
+      standard_steel_name: 'HW300x300',
+      shape: { kind: 'H', H: 300, B: 300, tw: 10, tf: 15 },
+      properties: {
+        A: 0.01192,
+        Iy: 2.04e-4,
+        Iz: 6.75e-5,
+        J: 4.23e-6,
+        G: 79000,
+      },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Portal frame
 // ---------------------------------------------------------------------------
 describe('buildModel - portal-frame', () => {
   it('should build a portal frame with two columns and a beam', () => {
@@ -280,8 +366,8 @@ describe('buildModel - portal-frame', () => {
 
     // 3 elements: left column, beam, right column
     expect(model.elements).toHaveLength(3);
-    expect(model.elements[0]).toEqual({ id: 'C0', type: 'beam', nodes: ['B0', 'T0'], material: '1', section: '1' });
-    expect(model.elements[1]).toEqual({ id: 'C1', type: 'beam', nodes: ['B1', 'T1'], material: '1', section: '1' });
+    expect(model.elements[0]).toEqual({ id: 'C0', type: 'column', nodes: ['B0', 'T0'], material: '1', section: '1' });
+    expect(model.elements[1]).toEqual({ id: 'C1', type: 'column', nodes: ['B1', 'T1'], material: '1', section: '1' });
     expect(model.elements[2]).toEqual({ id: 'R0', type: 'beam', nodes: ['T0', 'T1'], material: '1', section: '1' });
 
     // Load split equally between top nodes
@@ -291,6 +377,45 @@ describe('buildModel - portal-frame', () => {
     ]);
 
     expect(model.sections[0].name).toBe('PF1');
+  });
+
+  it('should preserve explicit portal-frame material and H-section properties', () => {
+    const state = makeState({
+      inferredType: 'portal-frame',
+      spanLengthM: 18,
+      heightM: 6,
+      loadKN: 30,
+      engineeringDraft: {
+        material: { family: 'steel', grade: 'Q345' },
+        sections: { member: 'H600x250x10x16' },
+      },
+    });
+
+    const model = buildModel(state);
+
+    expect(model.materials[0]).toMatchObject({
+      id: '1',
+      name: 'Q345',
+      grade: 'Q345',
+      category: 'steel',
+      E: 206000,
+      nu: 0.3,
+      rho: 7850,
+      fy: 345,
+    });
+    expect(model.sections[0]).toMatchObject({
+      id: '1',
+      name: 'H600X250X10X16',
+      type: 'H',
+      shape: { kind: 'H', H: 600, B: 250, tw: 10, tf: 16 },
+    });
+    expect(model.sections[0].properties).toMatchObject({
+      A: 0.01368,
+      G: 79000,
+    });
+    expect(model.sections[0].properties.Iy).toBeCloseTo(8.3499136e-4, 12);
+    expect(model.sections[0].properties.Iz).toBeCloseTo(4.1714e-5, 12);
+    expect(model.sections[0].properties.J).toBeCloseTo(8.72e-7, 12);
   });
 });
 
