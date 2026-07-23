@@ -928,6 +928,29 @@ describe('PKPM frame analysis flow', () => {
     ]);
   });
 
+  test('defaults an omitted story live load to zero', () => {
+    const model = buildRcUserScenarioModel();
+    model.stories = model.stories.map((story, index) => {
+      const deadLoad = index === 0 ? 5 : 6;
+      const { live_load: _liveLoad, ...withoutLiveLoad } = story;
+      return {
+        ...withoutLiveLoad,
+        dead_load: deadLoad,
+        floor_loads: [{ type: 'dead', value: deadLoad }],
+      };
+    });
+    model.load_cases = model.load_cases.map((loadCase) => ({ ...loadCase, loads: [] }));
+
+    const payload = runPkpmRuntime(model);
+
+    expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
+      expect.objectContaining({ floor: 1, dead: 5, live: 0 }),
+      expect.objectContaining({ floor: 2, dead: 6, live: 0 }),
+      expect.objectContaining({ floor: 1, dead: 5, live: 0 }),
+      expect.objectContaining({ floor: 2, dead: 6, live: 0 }),
+    ]);
+  });
+
   test('fails clearly when final PKPM model cannot be reopened for material parameter persistence', () => {
     const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
       expectFailure: true,

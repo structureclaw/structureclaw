@@ -550,6 +550,102 @@ def _ensure_v2_model(model_dict: dict) -> dict:
     return ensure_v2_dict(model_dict)
 
 
+def _validate_story_derived_loads(model_dict: dict) -> None:
+    """Allow exact nodal duplicates of declared YJK story floor loads only."""
+    explicit_loads = [
+        load
+        for load_case in model_dict.get("load_cases", [])
+        if isinstance(load_case, dict)
+        for load in load_case.get("loads", [])
+        if isinstance(load, dict)
+    ]
+    if not explicit_loads:
+        return
+
+    def finite_number(value: Any, label: str) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{label} must be a finite number") from error
+        if not math.isfinite(number):
+            raise ValueError(f"{label} must be a finite number")
+        return number
+
+    nodes = {
+        str(node.get("id")): node
+        for node in model_dict.get("nodes", [])
+        if isinstance(node, dict)
+    }
+    stories = {
+        str(story.get("id")): story
+        for story in model_dict.get("stories", [])
+        if isinstance(story, dict)
+    }
+    x_values = [finite_number(node.get("x"), f"Node '{node_id}' global X") for node_id, node in nodes.items()]
+    y_values = [finite_number(node.get("y"), f"Node '{node_id}' global Y") for node_id, node in nodes.items()]
+    plan_area = (max(x_values) - min(x_values)) * (max(y_values) - min(y_values))
+    if not math.isfinite(plan_area) or plan_area <= 0:
+        raise ValueError("YJK story floor loads require a positive global X-Y plan area")
+
+    totals: dict[tuple[str, str], float] = {}
+    for load in explicit_loads:
+        story_id = str(load.get("story", ""))
+        load_kind = str(load.get("load_kind", ""))
+        node_id = str(load.get("node", ""))
+        story = stories.get(story_id)
+        node = nodes.get(node_id)
+        if (
+            load.get("source") != "story_floor_loads"
+            or load.get("type") != "nodal"
+            or load.get("reference_frame", "global") != "global"
+            or load_kind not in {"dead", "live"}
+            or story is None
+            or node is None
+        ):
+            raise ValueError(
+                "The YJK adapter maps story floor loads only; other nodal/member loads are unsupported"
+            )
+        inactive_components = ("fx", "fy", "mx", "my", "mz", "wx", "wy", "wz")
+        if any(
+            abs(finite_number(load.get(key, 0.0), f"Load '{node_id}' {key}")) > 1e-9
+            for key in inactive_components
+        ):
+            raise ValueError("YJK story-derived loads must act only in negative global Z")
+        fz = finite_number(load.get("fz"), f"Load '{node_id}' fz")
+        if fz > 1e-9:
+            raise ValueError("YJK story-derived gravity loads must act in negative global Z")
+        story_top = finite_number(story.get("elevation", 0.0), f"Story '{story_id}' elevation") + finite_number(
+            story.get("height"), f"Story '{story_id}' height"
+        )
+        node_z = finite_number(node.get("z"), f"Node '{node_id}' global Z")
+        if abs(node_z - story_top) > 1e-9:
+            raise ValueError(f"Story-derived load on node '{node_id}' targets the wrong global Z level")
+        key = (story_id, load_kind)
+        totals[key] = totals.get(key, 0.0) - fz
+
+    for story_id, story in stories.items():
+        declared = {"dead": 0.0, "live": 0.0}
+        for floor_load in story.get("floor_loads", []):
+            if not isinstance(floor_load, dict):
+                continue
+            load_type = str(floor_load.get("type", ""))
+            if load_type in declared:
+                declared[load_type] = finite_number(
+                    floor_load.get("value", 0.0),
+                    f"Story '{story_id}' {load_type} floor load",
+                )
+        for load_kind, field in (("dead", "dead_load"), ("live", "live_load")):
+            if story.get(field) is not None:
+                declared[load_kind] = finite_number(story[field], f"Story '{story_id}' {field}")
+            expected_total = declared[load_kind] * plan_area
+            actual_total = totals.get((story_id, load_kind), 0.0)
+            tolerance = max(1e-6, abs(expected_total) * 1e-9)
+            if abs(actual_total - expected_total) > tolerance:
+                raise ValueError(
+                    f"Story '{story_id}' {load_kind} nodal-load total conflicts with {field}"
+                )
+
+
 def _validate_yjk_grid_conversion_scope(model_dict: dict) -> None:
     """Reject models the current grid API would silently change."""
     nodes = [node for node in model_dict.get("nodes", []) if isinstance(node, dict)]
@@ -557,16 +653,7 @@ def _validate_yjk_grid_conversion_scope(model_dict: dict) -> None:
     if not nodes or not elements:
         raise ValueError("YJK conversion requires non-empty nodes and elements")
 
-    explicit_load_count = sum(
-        len(load_case.get("loads", []))
-        for load_case in model_dict.get("load_cases", [])
-        if isinstance(load_case, dict) and isinstance(load_case.get("loads", []), list)
-    )
-    if explicit_load_count:
-        raise ValueError(
-            "The YJK grid adapter currently maps story floor loads only; explicit nodal/member loads "
-            "cannot be converted without losing their global/local reference frame"
-        )
+    _validate_story_derived_loads(model_dict)
 
     def coordinate_mm(value: Any, label: str) -> int:
         try:

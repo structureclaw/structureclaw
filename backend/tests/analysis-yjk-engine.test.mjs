@@ -15,6 +15,14 @@ const runtimeDir = path.join(
   'analysis',
   'runtime',
 );
+const yjkStaticDir = path.join(
+  repoRoot,
+  'backend',
+  'src',
+  'agent-skills',
+  'analysis',
+  'yjk-static',
+);
 
 function probePython(executable, args) {
   const result = spawnSync(executable, [...args, '-c', 'import sys; sys.exit(0)'], {
@@ -167,5 +175,103 @@ describe('analysis YJK engine registry', () => {
       fs.rmSync(fakeYjkRoot, { recursive: true, force: true });
       fs.rmSync(stubsDir, { recursive: true, force: true });
     }
+  });
+
+  test('reinvokes an existing YJK launcher to refresh authorization', () => {
+    const script = [
+      'import json',
+      'from types import SimpleNamespace',
+      'import yjk_driver as driver',
+      'spawned = []',
+      'steps = []',
+      'driver._find_yjk_launcher = lambda _root: r"C:\\YJKS\\YjkLauncher.exe"',
+      'driver._get_launcher_processes = lambda: [{"Id": 101}]',
+      'driver._popen_gui_detached = lambda args, cwd: spawned.append({"args": args, "cwd": cwd}) or SimpleNamespace(pid=202)',
+      'driver._env_path = lambda _name: None',
+      'driver._env_float = lambda _name, _default: 0.0',
+      'driver._record_step = lambda target, **entry: target.append(entry)',
+      'ok = driver._prewarm_yjk_launcher(r"C:\\YJKS", steps)',
+      'print(json.dumps({"ok": ok, "spawned": spawned, "steps": steps}))',
+    ].join('\n');
+
+    const result = spawnSync(
+      pythonCommand.executable,
+      [...pythonCommand.args, '-c', script],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PYTHONPATH: [yjkStaticDir, process.env.PYTHONPATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        windowsHide: process.platform === 'win32',
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout.trim());
+    expect(payload.ok).toBe(true);
+    expect(payload.spawned).toHaveLength(1);
+    expect(payload.spawned[0].args).toEqual(['C:\\YJKS\\YjkLauncher.exe']);
+    expect(payload.steps[0].pid).toBe(202);
+  });
+
+  test('accepts only exact story-derived nodal duplicates of YJK floor loads', () => {
+    const script = [
+      'import copy, json',
+      'import runtime',
+      'xs = [0.0, 6.0]',
+      'ys = [0.0, 5.0]',
+      'nodes = []',
+      'for z, story in ((0.0, None), (3.6, "F1")):',
+      '    for x in xs:',
+      '        for y in ys:',
+      '            node = {"id": f"N_{x}_{y}_{z}", "x": x, "y": y, "z": z, "restraints": [z == 0.0] * 6}',
+      '            if story is not None: node["story"] = story',
+      '            nodes.append(node)',
+      'elements = []',
+      'for x in xs:',
+      '    for y in ys:',
+      '        elements.append({"id": f"C_{x}_{y}", "type": "column", "nodes": [f"N_{x}_{y}_0.0", f"N_{x}_{y}_3.6"], "material": "MC", "section": "SC", "story": "F1"})',
+      'for y in ys:',
+      '    elements.append({"id": f"BX_{y}", "type": "beam", "nodes": [f"N_0.0_{y}_3.6", f"N_6.0_{y}_3.6"], "material": "MB", "section": "SB", "story": "F1"})',
+      'for x in xs:',
+      '    elements.append({"id": f"BY_{x}", "type": "beam", "nodes": [f"N_{x}_0.0_3.6", f"N_{x}_5.0_3.6"], "material": "MB", "section": "SB", "story": "F1"})',
+      'loads = [{"type": "nodal", "node": f"N_{x}_{y}_3.6", "fz": -90.0, "story": "F1", "source": "story_floor_loads", "load_kind": "dead", "reference_frame": "global"} for x in xs for y in ys]',
+      'model = {"nodes": nodes, "elements": elements, "materials": [{"id": "MC", "category": "concrete"}, {"id": "MB", "category": "concrete"}], "sections": [{"id": "SC"}, {"id": "SB"}], "stories": [{"id": "F1", "elevation": 0.0, "height": 3.6, "floor_loads": [{"type": "dead", "value": 12.0}], "dead_load": 12.0}], "load_cases": [{"id": "D", "loads": loads}]}',
+      'runtime._validate_yjk_grid_conversion_scope(model)',
+      'def rejected(candidate):',
+      '    try:',
+      '        runtime._validate_yjk_grid_conversion_scope(candidate)',
+      '    except ValueError as error:',
+      '        return str(error)',
+      '    return None',
+      'wrong_total = copy.deepcopy(model)',
+      'wrong_total["load_cases"][0]["loads"][0]["fz"] = -80.0',
+      'explicit = copy.deepcopy(model)',
+      'explicit["load_cases"][0]["loads"][0]["source"] = "user_explicit"',
+      'print(json.dumps({"wrongTotal": rejected(wrong_total), "explicit": rejected(explicit)}))',
+    ].join('\n');
+
+    const result = spawnSync(
+      pythonCommand.executable,
+      [...pythonCommand.args, '-c', script],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PYTHONPATH: [yjkStaticDir, runtimeDir, process.env.PYTHONPATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        windowsHide: process.platform === 'win32',
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout.trim());
+    expect(payload.wrongTotal).toContain('conflicts with dead_load');
+    expect(payload.explicit).toContain('other nodal/member loads are unsupported');
   });
 });

@@ -415,13 +415,12 @@ def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
     started_at = time.monotonic()
     cwd = _env_path("YJK_LAUNCHER_CWD") or yjks_root
     try:
+        proc = _popen_gui_detached([launcher], cwd)
+        pid = proc.pid
         if existing_pid <= 0:
-            proc = _popen_gui_detached([launcher], cwd)
-            pid = proc.pid
             message = "Started official YJK launcher and kept it alive for authorization."
         else:
-            pid = existing_pid
-            message = "Reused existing official YJK launcher for authorization."
+            message = "Reinvoked official YJK launcher to refresh authorization."
     except Exception as exc:
         _record_step(
             steps,

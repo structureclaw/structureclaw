@@ -559,8 +559,11 @@ def _validate_story_derived_loads(data: dict) -> None:
         totals[key] = totals.get(key, 0.0) - fz
 
     for story_id, story in stories.items():
-        for load_kind, field in (("dead", "dead_load"), ("live", "live_load")):
-            declared = _finite_number(story.get(field, 0.0), f"Story '{story_id}' {field}")
+        dead_load, live_load = _story_dead_live_pair(story)
+        for load_kind, field, declared in (
+            ("dead", "dead_load", dead_load),
+            ("live", "live_load", live_load),
+        ):
             expected_total = declared * plan_area
             actual_total = totals.get((story_id, load_kind), 0.0)
             tolerance = max(1e-6, abs(expected_total) * 1e-9)
@@ -935,8 +938,8 @@ def _nonnegative_float(value: Any, *, field: str, story_id: str) -> float:
 def _story_dead_live_pair(story: dict[str, Any]) -> tuple[float, float]:
     story_id = str(story.get("id", ""))
     return (
-        _nonnegative_float(story.get("dead_load", 0.0), field="dead_load", story_id=story_id),
-        _nonnegative_float(story.get("live_load", 0.0), field="live_load", story_id=story_id),
+        _nonnegative_float(story.get("dead_load") or 0.0, field="dead_load", story_id=story_id),
+        _nonnegative_float(story.get("live_load") or 0.0, field="live_load", story_id=story_id),
     )
 
 
