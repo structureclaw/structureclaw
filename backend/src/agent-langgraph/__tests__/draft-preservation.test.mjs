@@ -8,6 +8,31 @@ const unknownFallbackMatch = {
 };
 
 describe("draft extraction preservation", () => {
+  test("reuses the structural type recorded by the preceding detection tool", async () => {
+    const { resolveDetectedStructuralTypeMatch } = await import("../../../dist/agent-langgraph/tools.js");
+    const plugin = {
+      id: "frame",
+      structureType: "frame",
+      manifest: { structuralTypeKeys: ["frame", "steel-frame"] },
+    };
+    const runtime = {
+      resolvePluginForType: async (key) => key === "steel-frame" ? plugin : null,
+    };
+
+    await expect(resolveDetectedStructuralTypeMatch(
+      runtime,
+      "steel-frame",
+      ["steel-frame"],
+    )).resolves.toEqual({
+      key: "steel-frame",
+      mappedType: "frame",
+      skillId: "frame",
+      supportLevel: "supported",
+      routingSource: "current-state",
+    });
+    await expect(resolveDetectedStructuralTypeMatch(runtime, null)).resolves.toBeNull();
+  });
+
   test("prefers explicit tool messages and falls back to graph user messages", async () => {
     const { resolveToolInputMessage } = await import("../../../dist/agent-langgraph/tools.js");
 

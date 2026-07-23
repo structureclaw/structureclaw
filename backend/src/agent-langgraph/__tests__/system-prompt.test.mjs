@@ -31,6 +31,9 @@ describe("agent system prompt", () => {
     expect(content).toContain("不要由 LLM 判断条文通过或失败");
     expect(content).toContain("先调用 run_code_check");
     expect(content).toContain("SEISMIC_CODE_CHECK_REQUIRED");
+    expect(content).toContain("先调用 detect_structure_type");
+    expect(content).toContain("等待其返回后");
+    expect(content).not.toContain("同时调用 detect_structure_type 和 extract_draft_params");
     expect(content).not.toContain("用正则或直接让 LLM");
   });
 
@@ -56,5 +59,8 @@ describe("agent system prompt", () => {
     expect(content).toContain("do not let the LLM decide clause pass/fail status");
     expect(content).toContain("call run_code_check");
     expect(content).toContain("SEISMIC_CODE_CHECK_REQUIRED");
+    expect(content).toContain("Call detect_structure_type first");
+    expect(content).toContain("After it returns");
+    expect(content).not.toContain("detect_structure_type AND extract_draft_params together");
   });
 });

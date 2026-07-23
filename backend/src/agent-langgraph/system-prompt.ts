@@ -137,7 +137,7 @@ ${summarizeArtifacts(state)}
 ## 工具使用策略
 
 当用户提出结构设计或分析请求时，按以下流程执行：
-1. 同时调用 detect_structure_type 和 extract_draft_params（传入用户的完整原始消息，不要改写或翻译）
+1. 先调用 detect_structure_type（传入用户的完整原始消息，不要改写或翻译）；等待其返回后，再调用 extract_draft_params。extract_draft_params 会复用本次检测结果，禁止并行调用这两个工具
 2. 如果 extract_draft_params 返回 criticalMissing 字段，使用 ask_user_clarification 询问缺失参数
 3. 参数齐全后，调用 build_model 构建模型
 4. 调用 validate_model 验证模型
@@ -217,7 +217,7 @@ ${summarizeArtifacts(state)}
 ## Tool Usage Strategy
 
 When the user makes a structural design or analysis request, follow this workflow:
-1. Call detect_structure_type AND extract_draft_params together (pass the user's EXACT original message — do NOT paraphrase or translate)
+1. Call detect_structure_type first (pass the user's EXACT original message — do NOT paraphrase or translate). After it returns, call extract_draft_params, which reuses that detection result; do not call these two tools in parallel
 2. If extract_draft_params returns criticalMissing fields, use ask_user_clarification to ask for them
 3. Once parameters are complete, call build_model to construct the model
 4. Call validate_model to validate the model
