@@ -44,6 +44,7 @@ export interface EngineeringDraftBoundary {
 export interface EngineeringDraftLoadLocation {
   xM?: number;
   spanIndex?: number;
+  story?: number;
   nodeRole?: string;
 }
 

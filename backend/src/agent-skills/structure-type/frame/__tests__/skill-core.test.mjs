@@ -472,6 +472,36 @@ describe('frame canonicalize core contract', () => {
     expect(lineCase.loads.map((load) => load.element)).toEqual(['B14', 'B15']);
   });
 
+  test('applies explicitly located 2d frame nodal loads only to their requested joints', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 2,
+      storyHeightsM: [3.6, 3.6, 3.6],
+      bayWidthsM: [6, 6],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'nodal', magnitude: 10, unit: 'kN', direction: 'globalX', location: { story: 1, nodeRole: 'right-side' } },
+          { kind: 'nodal', magnitude: 15, unit: 'kN', direction: 'globalX', location: { story: 2, nodeRole: 'right-side' } },
+          { kind: 'nodal', magnitude: 20, unit: 'kN', direction: 'globalX', location: { story: 3, nodeRole: 'right-side' } },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lateralCase = model.load_cases.find((loadCase) => loadCase.id === 'LAT');
+    expect(lateralCase).toBeDefined();
+    expect(lateralCase.loads).toEqual([
+      { type: 'nodal', node: 'N1_2', story: 'F1', fx: 10, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+      { type: 'nodal', node: 'N2_2', story: 'F2', fx: 15, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+      { type: 'nodal', node: 'N3_2', story: 'F3', fx: 20, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+    ]);
+  });
+
   test('does not treat member-end top wording as a top-story frame line target', () => {
     const model = buildFrameModel({
       inferredType: 'frame',

@@ -283,7 +283,16 @@ function isGravityLineLoad(load: EngineeringDraftLoad): boolean {
     && (load.direction === undefined || load.direction === 'gravity' || load.direction === 'globalZ');
 }
 
-export function hasFrameAnalysisLoadInput(state: Pick<DraftState, 'floorLoads' | 'engineeringDraft' | 'wind'>): boolean {
+function isExplicit2dNodalLoad(load: EngineeringDraftLoad): boolean {
+  return (load.kind === 'nodal' || load.kind === 'point')
+    && load.magnitude > 0
+    && Number.isFinite(load.magnitude)
+    && load.location?.story !== undefined
+    && load.location.nodeRole !== undefined
+    && (load.direction === 'globalX' || load.direction === 'gravity' || load.direction === 'globalZ');
+}
+
+export function hasFrameAnalysisLoadInput(state: Pick<DraftState, 'floorLoads' | 'engineeringDraft' | 'wind' | 'frameDimension'>): boolean {
   if (hasFloorLoadValue(state.floorLoads)) return true;
   if (typeof state.wind?.basicPressureKNM2 === 'number' && Number.isFinite(state.wind.basicPressureKNM2) && state.wind.basicPressureKNM2 > 0) {
     return true;
@@ -291,7 +300,7 @@ export function hasFrameAnalysisLoadInput(state: Pick<DraftState, 'floorLoads' |
   return Boolean(state.engineeringDraft?.loads?.some((load) => (
     load.magnitude > 0
     && Number.isFinite(load.magnitude)
-    && isGravityLineLoad(load)
+    && (isGravityLineLoad(load) || (state.frameDimension !== '3d' && isExplicit2dNodalLoad(load)))
   )));
 }
 
@@ -488,6 +497,45 @@ function build3dBeamLineLoads(
   return loads;
 }
 
+function frame2dNodeIndex(nodeRole: string, nodeCount: number): number | undefined {
+  const role = nodeRole.trim().toLowerCase();
+  if (role.includes('right') || role.includes('end') || /右侧|右端/u.test(role)) return nodeCount - 1;
+  if (role.includes('left') || role.includes('start') || /左侧|左端/u.test(role)) return 0;
+  if (role.includes('middle') || role.includes('center') || role.includes('centre') || /中间|中央/u.test(role)) {
+    return Math.floor((nodeCount - 1) / 2);
+  }
+  return undefined;
+}
+
+function build2dEngineeringNodalLoads(
+  state: DraftState,
+  storyCount: number,
+  levelNodeCount: number,
+): Array<Record<string, unknown>> {
+  const loads: Array<Record<string, unknown>> = [];
+  for (const load of state.engineeringDraft?.loads ?? []) {
+    if (!isExplicit2dNodalLoad(load)) continue;
+    const story = load.location!.story!;
+    if (story > storyCount) continue;
+    const nodeIndex = frame2dNodeIndex(load.location!.nodeRole!, levelNodeCount);
+    if (nodeIndex === undefined) continue;
+
+    const nodeLoad: Record<string, unknown> = {
+      type: 'nodal',
+      node: n2dId(story, nodeIndex),
+      story: `F${story}`,
+      source: 'engineering_draft_nodal_loads',
+    };
+    if (load.direction === 'globalX') {
+      nodeLoad.fx = load.magnitude;
+    } else {
+      nodeLoad.fz = -Math.abs(load.magnitude);
+    }
+    loads.push(nodeLoad);
+  }
+  return loads;
+}
+
 function buildFrame2dLocalModel(
   state: DraftState,
   matProps: ResolvedFrameMaterialProps,
@@ -551,6 +599,7 @@ function buildFrame2dLocalModel(
       if (nodeLoad.fx !== undefined) lateralLoads.push(nodeLoad);
     }
   }
+  lateralLoads.push(...build2dEngineeringNodalLoads(state, storyHeights.length, levelNodeCount));
 
   const stories = storyHeights.map((h, i) => {
     const storyIdx = i + 1;

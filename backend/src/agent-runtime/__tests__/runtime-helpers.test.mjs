@@ -837,6 +837,50 @@ describe('agent runtime helper utilities', () => {
     ]);
   });
 
+  test('preserves explicitly located frame nodal loads instead of projecting them as floor totals', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3, 3],
+          bayWidthsM: [6, 6],
+        },
+        loads: [
+          {
+            kind: 'nodal',
+            magnitude: 10,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 1, nodeRole: 'right-side' },
+          },
+          {
+            kind: 'nodal',
+            magnitude: 15,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 2, nodeRole: 'right-side' },
+          },
+          {
+            kind: 'nodal',
+            magnitude: 20,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 3, nodeRole: 'right-side' },
+          },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.engineeringDraft?.loads?.map((load) => load.location)).toEqual([
+      { story: 1, nodeRole: 'right-side' },
+      { story: 2, nodeRole: 'right-side' },
+      { story: 3, nodeRole: 'right-side' },
+    ]);
+    expect(patch.floorLoads).toBeUndefined();
+  });
+
   test('treats x-only engineering frame spans as 2d geometry', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 

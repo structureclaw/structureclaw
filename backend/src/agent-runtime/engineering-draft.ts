@@ -179,9 +179,13 @@ function normalizeLoadLocation(value: unknown): EngineeringDraftLoad['location']
   const location = {
     xM: positiveNumber(raw.xM ?? raw.x ?? raw.positionM),
     spanIndex: positiveInteger(raw.spanIndex ?? raw.span),
+    story: positiveInteger(raw.story ?? raw.storyIndex ?? raw.level),
     nodeRole: normalizeString(raw.nodeRole ?? raw.node),
   };
-  return location.xM !== undefined || location.spanIndex !== undefined || location.nodeRole !== undefined
+  return location.xM !== undefined
+    || location.spanIndex !== undefined
+    || location.story !== undefined
+    || location.nodeRole !== undefined
     ? location
     : undefined;
 }
@@ -585,6 +589,9 @@ function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtra
       item.totalKN !== undefined
       && Number.isFinite(item.totalKN)
       && item.totalKN > 0
+      && !(isPointLikeLoad(item.load)
+        && item.load.location?.story !== undefined
+        && item.load.location.nodeRole !== undefined)
     ));
 
   const comparableLoads: ConvertibleFrameLoad[] = convertibleLoads.filter((item) => (

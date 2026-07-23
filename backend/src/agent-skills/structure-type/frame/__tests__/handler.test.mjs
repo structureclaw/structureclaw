@@ -267,6 +267,44 @@ describe('frame handler composed modules', () => {
     ]);
   });
 
+  test('drops same-patch aggregate lateral loads duplicated by explicitly located nodal loads', () => {
+    const patch = handler.extractDraft({
+      message: '三层框架右侧节点分别施加10、15、20kN水平荷载',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        frameDimension: '2d',
+        storyCount: 3,
+        bayCount: 2,
+        storyHeightsM: [3.6, 3.6, 3.6],
+        bayWidthsM: [6, 6],
+        floorLoads: [
+          { story: 1, lateralXKN: 10 },
+          { story: 2, lateralXKN: 15 },
+          { story: 3, lateralXKN: 20 },
+        ],
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [
+            { kind: 'nodal', magnitude: 10, unit: 'kN', direction: 'globalX', location: { story: 1, nodeRole: 'right-side' } },
+            { kind: 'nodal', magnitude: 15, unit: 'kN', direction: 'globalX', location: { story: 2, nodeRole: 'right-side' } },
+            { kind: 'nodal', magnitude: 20, unit: 'kN', direction: 'globalX', location: { story: 3, nodeRole: 'right-side' } },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.floorLoads).toBeUndefined();
+    expect(state.engineeringDraft.loads).toHaveLength(3);
+  });
+
   test('does not treat non-gravity line loads as executable gravity loads', () => {
     const missing = handler.computeMissing({
       inferredType: 'frame',
