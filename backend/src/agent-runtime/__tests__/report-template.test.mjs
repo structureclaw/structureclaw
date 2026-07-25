@@ -195,6 +195,38 @@ const baseInput = {
 };
 
 describe('default report template seismic section', () => {
+  test('grounds the controlling nodal displacement with coordinates and units', async () => {
+    const { buildDefaultReportNarrative } = await import('../../../dist/agent-runtime/report-template.js');
+
+    const markdown = buildDefaultReportNarrative({
+      ...baseInput,
+      locale: 'en',
+      analysisType: 'static',
+      controllingCases: { controlNodeDisplacement: '2' },
+      normalizedModel: {
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0 },
+          { id: '2', x: 3.75, y: 0, z: 0 },
+          { id: '3', x: 7.5, y: 0, z: 0 },
+        ],
+      },
+      analysis: {
+        success: true,
+        data: {
+          displacements: {
+            '2': { ux: 0, uy: 0, uz: -0.03617449504573168 },
+          },
+          envelope: { controlNodeDisplacement: '2' },
+          meta: { units: { displacement: 'm' } },
+        },
+      },
+    });
+
+    expect(markdown).toContain(
+      'Control-node displacement response: node 2 at global coordinates (x=3.75, y=0, z=0), ux=0, uy=0, uz=-0.03617449504573168 m',
+    );
+  });
+
   test('renders Chinese seismic design basis and key metrics', async () => {
     const { buildDefaultReportNarrative } = await import('../../../dist/agent-runtime/report-template.js');
 

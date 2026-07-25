@@ -1,5 +1,10 @@
 import type { AppLocale } from '../services/locale.js';
-import type { StructureClawChatModel } from '../utils/llm.js';
+import {
+  extractLlmTokenUsage,
+  getReasoningContentLength,
+  type LlmTokenUsage,
+  type StructureClawChatModel,
+} from '../utils/llm.js';
 import { buildStructuralTypeMatch } from './plugin-helpers.js';
 import type {
   AgentSkillPlugin,
@@ -10,7 +15,7 @@ import type {
   StructuralTypeSupportLevel,
 } from './types.js';
 
-type StructuralRouterAction = 'continue_current' | 'switch_skill' | 'generic' | 'ask';
+type StructuralRouterAction = 'continue_current' | 'switch_skill' | 'unsupported' | 'generic' | 'ask';
 type RouterLlm = Pick<StructureClawChatModel, 'invoke'>;
 
 interface StructuralRouterDecision {
@@ -32,10 +37,11 @@ export interface StructuralRouterInput {
   plugins: AgentSkillPlugin[];
   ruleMatch?: StructuralTypeMatch;
   signal?: AbortSignal;
+  onUsage?: (usage: LlmTokenUsage) => void;
 }
 
 const MIN_ROUTER_CONFIDENCE = 0.55;
-const ROUTER_OUTPUT_SCHEMA = '{ "action": "continue_current|switch_skill|generic|ask", "skillId": string, "structuralTypeKey": string, "mappedType": string, "supportLevel": "supported|fallback|unsupported", "confidence": number, "reason": string }';
+const ROUTER_OUTPUT_SCHEMA = '{ "action": "continue_current|switch_skill|unsupported|generic|ask", "skillId": string, "structuralTypeKey": string, "mappedType": string, "supportLevel": "supported|fallback|unsupported", "confidence": number, "reason": string }';
 const PROMPT_METADATA_KEYS = new Set([
   'updatedAt',
   'coordinateSemantics',
@@ -71,7 +77,7 @@ const MODEL_TYPES = new Set<InferredModelType>([
   'unknown',
 ]);
 const SUPPORT_LEVELS = new Set<StructuralTypeSupportLevel>(['supported', 'fallback', 'unsupported']);
-const ACTIONS = new Set<StructuralRouterAction>(['continue_current', 'switch_skill', 'generic', 'ask']);
+const ACTIONS = new Set<StructuralRouterAction>(['continue_current', 'switch_skill', 'unsupported', 'generic', 'ask']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -220,6 +226,19 @@ function resolveRouterMatch(
     return buildGenericMatch(input.locale, input.plugins, decision.reason);
   }
 
+  if (action === 'unsupported') {
+    if (!decision.structuralTypeKey || decision.structuralTypeKey === 'unknown') {
+      return null;
+    }
+    return {
+      key: decision.structuralTypeKey,
+      mappedType: 'unknown',
+      supportLevel: 'unsupported',
+      supportNote: decision.reason,
+      routingSource: 'llm-suggested',
+    };
+  }
+
   if (action !== 'switch_skill') {
     return null;
   }
@@ -281,6 +300,7 @@ function buildRouterPrompt(input: StructuralRouterInput): string {
       'action 说明：',
       '- continue_current: 本轮是在继续修改已有 draft。',
       '- switch_skill: 本轮明确应使用某个可用 structure-type skill。',
+      '- unsupported: 本轮明确要求当前可用 skills 不支持的结构类型；输出具体 structuralTypeKey、mappedType="unknown"、supportLevel="unsupported"，不要填写 skillId。',
       '- generic: 描述有结构意图，但不宜由具体 skill 硬判，先交给 generic。',
       '- ask: 信息不足以稳定判断，交给 generic 追问。',
       '',
@@ -307,6 +327,8 @@ function buildRouterPrompt(input: StructuralRouterInput): string {
     'Return JSON only, no markdown. Schema:',
     ROUTER_OUTPUT_SCHEMA,
     '',
+    'Use action="unsupported" when the requested structural type is clearly outside the available skills. Provide its structuralTypeKey, mappedType="unknown", supportLevel="unsupported", and omit skillId.',
+    '',
     'Available skills:',
     skillsJson,
     '',
@@ -321,15 +343,36 @@ function buildRouterPrompt(input: StructuralRouterInput): string {
 }
 
 export async function invokeStructuralTypeRouter(input: StructuralRouterInput): Promise<StructuralTypeMatch | null> {
+  let result: Awaited<ReturnType<RouterLlm['invoke']>>;
   try {
-    const result = await input.llm.invoke(buildRouterPrompt(input), { signal: input.signal });
-    const content = typeof result.content === 'string'
-      ? result.content
-      : JSON.stringify(result.content);
-    const parsed = parseJsonObject(content);
-    if (!parsed) return null;
-    return resolveRouterMatch(normalizeDecision(parsed), input);
-  } catch {
+    result = await input.llm.invoke(buildRouterPrompt(input), { signal: input.signal });
+  } catch (error) {
+    if (process.env.SCLAW_BENCHMARK_LLM_ONLY === '1') {
+      throw new Error(
+        `LLM_STRUCTURAL_ROUTER_INFRASTRUCTURE_ERROR: network error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     return null;
   }
+  const usage = extractLlmTokenUsage(result);
+  if (usage) input.onUsage?.(usage);
+  const content = typeof result.content === 'string'
+    ? result.content
+    : JSON.stringify(result.content);
+  const responseMetadata = result.response_metadata as Record<string, unknown> | undefined;
+  const rawFinishReason = responseMetadata?.finish_reason ?? responseMetadata?.stop_reason;
+  const finishReason = typeof rawFinishReason === 'string' ? rawFinishReason : undefined;
+  const reasoningContentLength = getReasoningContentLength(result);
+  const parsed = parseJsonObject(content);
+  const match = parsed ? resolveRouterMatch(normalizeDecision(parsed), input) : null;
+  if (!match && process.env.SCLAW_BENCHMARK_LLM_ONLY === '1') {
+    throw new Error(
+      'LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT: response did not contain a usable routing decision; '
+      + `finishReason=${finishReason ?? 'unknown'}; contentLength=${content.length}; `
+      + `reasoningContentLength=${reasoningContentLength}`,
+    );
+  }
+  return match;
 }

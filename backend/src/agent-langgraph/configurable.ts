@@ -20,6 +20,8 @@ export interface AgentConfigurable {
   structureProtocolClient: LocalStructureProtocolClient;
   /** Absolute path to the workspace root. */
   workspaceRoot: string;
+  /** Exact file paths that analyze_file may read for a restricted run. */
+  fileAccessAllowlist?: string[];
   /** Requested allow-list of tool IDs for this run; undefined means registry defaults. */
   enabledToolIds?: string[];
   /** Requested deny-list of tool IDs for this run. */

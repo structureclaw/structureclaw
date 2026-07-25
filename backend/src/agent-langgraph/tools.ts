@@ -19,7 +19,11 @@ import { Command, interrupt } from '@langchain/langgraph';
 import { ToolMessage } from '@langchain/core/messages';
 import { logger } from '../utils/logger.js';
 import { getLogger, logToolCall } from '../utils/agent-logger.js';
-import { createChatModel } from '../utils/llm.js';
+import {
+  createChatModel,
+  mergeLlmTokenUsage,
+  type LlmTokenUsage,
+} from '../utils/llm.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import type {
@@ -332,6 +336,7 @@ function toolResult(
   toolName: string,
   content: string,
   stateUpdate?: Partial<AgentState>,
+  llmUsage?: LlmTokenUsage,
 ): Command {
   return new Command({
     update: {
@@ -340,9 +345,35 @@ function toolResult(
         content,
         tool_call_id: toolCallId,
         name: toolName,
+        ...(llmUsage
+          ? {
+              response_metadata: {
+                tokenUsage: {
+                  promptTokens: llmUsage.inputTokens,
+                  completionTokens: llmUsage.outputTokens,
+                  totalTokens: llmUsage.totalTokens,
+                },
+                tokenUsageSource: 'nested-benchmark-call',
+              },
+            }
+          : {}),
       })],
     },
   });
+}
+
+function benchmarkLlmUsageCollector(): {
+  onUsage: ((usage: LlmTokenUsage) => void) | undefined;
+  total: () => LlmTokenUsage | undefined;
+} {
+  if (process.env.SCLAW_BENCHMARK_LLM_ONLY !== '1') {
+    return { onUsage: undefined, total: () => undefined };
+  }
+  const usages: LlmTokenUsage[] = [];
+  return {
+    onUsage: (usage) => usages.push(usage),
+    total: () => mergeLlmTokenUsage(usages),
+  };
 }
 
 type ParsedJsonObjectInput =
@@ -1431,7 +1462,37 @@ function buildClarificationQuestions(
   locale: 'zh' | 'en',
 ): InteractionQuestion[] {
   if (criticalMissing.length === 0) return [];
-  return plugin?.handler.buildQuestions?.(criticalMissing, optionalMissing, state, locale) ?? [];
+  return plugin?.handler.buildQuestions?.(
+    [...criticalMissing, ...optionalMissing],
+    criticalMissing,
+    state,
+    locale,
+  ) ?? [];
+}
+
+export function shouldRetryDraftExtraction(
+  draftPatch: Record<string, unknown> | null | undefined,
+  missing: { critical: string[] },
+  state: DraftState,
+): boolean {
+  if (!draftPatch || missing.critical.length === 0) {
+    return false;
+  }
+  const unresolved = new Set<string>();
+  for (const issue of state.draftIssues ?? []) {
+    if (typeof issue.field === 'string' && issue.field.trim()) {
+      unresolved.add(issue.field);
+    }
+  }
+  const invalidDraftFields = state.skillState?.invalidDraftFields;
+  if (Array.isArray(invalidDraftFields)) {
+    for (const field of invalidDraftFields) {
+      if (typeof field === 'string' && field.trim()) {
+        unresolved.add(field);
+      }
+    }
+  }
+  return missing.critical.every((field) => !unresolved.has(field));
 }
 
 function hasStableDraftType(state: DraftState | null | undefined): state is DraftState {
@@ -1815,6 +1876,8 @@ function pickAnalysisDiagnostics(
 
   copy('engineId', meta.engineId);
   copy('engineName', meta.engineName);
+  copy('failureKind', meta.failureKind);
+  copy('capability', meta.capability);
   copy('exceptionType', meta.exceptionType);
   copy('analysisSkillId', meta.analysisSkillId);
   copy('analysisAdapterKey', meta.analysisAdapterKey);
@@ -1887,7 +1950,75 @@ function compactFloorLoadTransferSummary(
   });
 }
 
-function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: Record<string, unknown>) {
+function compactAnalysisModelContext(
+  model: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!model) return undefined;
+
+  const entityLimit = 60;
+  const rawNodes = Array.isArray(model.nodes) ? model.nodes : [];
+  const rawElements = Array.isArray(model.elements) ? model.elements : [];
+  const nodeEntries = rawNodes
+    .filter(isRecord)
+    .map((node) => {
+      const id = pickStringLike(node, 'id');
+      if (!id) return null;
+      return [id, omitEmptyRecord({
+        x: pickNumberLike(node, 'x'),
+        y: pickNumberLike(node, 'y'),
+        z: pickNumberLike(node, 'z'),
+        restraints: Array.isArray(node.restraints)
+          ? node.restraints.filter((value): value is boolean => typeof value === 'boolean')
+          : undefined,
+      }) ?? {}] as const;
+    })
+    .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null);
+  const elementEntries = rawElements
+    .filter(isRecord)
+    .map((element) => {
+      const id = pickStringLike(element, 'id');
+      if (!id) return null;
+      return [id, omitEmptyRecord({
+        type: pickStringLike(element, 'type'),
+        nodes: Array.isArray(element.nodes)
+          ? element.nodes
+              .map((value) => (
+                typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))
+                  ? String(value)
+                  : null
+              ))
+              .filter((value): value is string => value !== null)
+          : undefined,
+        material: pickStringLike(element, 'material'),
+        section: pickStringLike(element, 'section'),
+      }) ?? {}] as const;
+    })
+    .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null);
+
+  return omitEmptyRecord({
+    coordinateSystem: optionalRecord(model.coordinate_system),
+    nodes: nodeEntries.length > 0
+      ? {
+          totalCount: nodeEntries.length,
+          truncated: nodeEntries.length > entityLimit,
+          values: Object.fromEntries(nodeEntries.slice(0, entityLimit)),
+        }
+      : undefined,
+    elements: elementEntries.length > 0
+      ? {
+          totalCount: elementEntries.length,
+          truncated: elementEntries.length > entityLimit,
+          values: Object.fromEntries(elementEntries.slice(0, entityLimit)),
+        }
+      : undefined,
+  });
+}
+
+function buildSuccessfulAnalysisDetails(
+  data: Record<string, unknown>,
+  result: Record<string, unknown>,
+  model?: Record<string, unknown>,
+) {
   const summary = optionalRecord(data.summary);
   const envelope = optionalRecord(data.envelope);
   const responseSpectrumFinalCompliance = optionalRecord(data.responseSpectrumFinalCompliance);
@@ -1940,6 +2071,60 @@ function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: R
     controlElementMoment: pickStringLike(envelope, 'controlElementMoment'),
     controlNodeReaction: pickStringLike(envelope, 'controlNodeReaction'),
   }) : undefined;
+  const responseEntityLimit = 60;
+  const compactResponseEntities = (
+    value: unknown,
+    preferredIds: Array<string | undefined>,
+  ): Record<string, unknown> | undefined => {
+    const source = optionalRecord(value);
+    if (!source) return undefined;
+    const sourceIds = Object.keys(source);
+    if (sourceIds.length === 0) return undefined;
+    const orderedIds = [
+      ...preferredIds.filter((id): id is string => typeof id === 'string' && id in source),
+      ...sourceIds,
+    ].filter((id, index, allIds) => allIds.indexOf(id) === index);
+    const selectedIds = orderedIds.slice(0, responseEntityLimit);
+    return {
+      totalCount: sourceIds.length,
+      truncated: sourceIds.length > selectedIds.length,
+      values: Object.fromEntries(selectedIds.map((id) => [id, source[id]])),
+    };
+  };
+  const analysisMeta = optionalRecord(data.meta);
+  const responseEnvelopeId = (key: string): string | undefined => (
+    envelope ? pickStringLike(envelope, key) ?? undefined : undefined
+  );
+  const responseMetaValue = (key: string): string | undefined => (
+    analysisMeta ? pickStringLike(analysisMeta, key) ?? undefined : undefined
+  );
+  const responses = omitEmptyRecord({
+    coordinateSemantics: responseMetaValue('coordinateSemantics'),
+    dimension: responseMetaValue('dimension'),
+    plane: responseMetaValue('plane'),
+    activeDofs: Array.isArray(analysisMeta?.activeDofs)
+      ? analysisMeta.activeDofs.filter((value): value is string => typeof value === 'string')
+      : undefined,
+    units: optionalRecord(analysisMeta?.units),
+    nodalResultFrame: responseMetaValue('nodalResultFrame'),
+    elementForceFrame: responseMetaValue('elementForceFrame'),
+    displacements: compactResponseEntities(
+      data.displacements ?? data.nodeDisplacements,
+      [responseEnvelopeId('controlNodeDisplacement')],
+    ),
+    reactions: compactResponseEntities(
+      data.reactions ?? data.nodeReactions,
+      [responseEnvelopeId('controlNodeReaction')],
+    ),
+    memberForces: compactResponseEntities(
+      data.forces ?? data.memberForces,
+      [
+        responseEnvelopeId('controlElementAxialForce'),
+        responseEnvelopeId('controlElementShearForce'),
+        responseEnvelopeId('controlElementMoment'),
+      ],
+    ),
+  });
   const compliance = omitEmptyRecord({
     responseSpectrumDrift: compactFinalCompliance(responseSpectrumFinalCompliance),
     elasticStoryDrift: compactFinalCompliance(elasticStoryDriftFinalCompliance),
@@ -1962,6 +2147,8 @@ function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: R
     counts,
     keyMetrics,
     controlling,
+    modelContext: compactAnalysisModelContext(model),
+    responses,
     compliance,
     capabilityAssessment: compactCapabilityAssessment(data),
     specialSystemReview: compactSpecialSystemReview(data),
@@ -1974,24 +2161,94 @@ function getAnalysisPayload(result: Record<string, unknown>): Record<string, unk
   return isRecord(result.data) ? result.data : result;
 }
 
+const FAILED_ANALYSIS_STATUSES = new Set([
+  'failed',
+  'failure',
+  'error',
+  'unsupported',
+  'rejected',
+  'cancelled',
+  'canceled',
+  'timeout',
+  'timed_out',
+]);
+
+const SUCCESSFUL_ANALYSIS_STATUSES = new Set([
+  'success',
+  'succeeded',
+  'complete',
+  'completed',
+]);
+
+function isExplicitAnalysisFailure(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.success === false) return true;
+  const status = typeof value.status === 'string' ? value.status.trim().toLowerCase() : '';
+  return FAILED_ANALYSIS_STATUSES.has(status);
+}
+
+function isExplicitAnalysisSuccess(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.success === true) return true;
+  const status = typeof value.status === 'string' ? value.status.trim().toLowerCase() : '';
+  return SUCCESSFUL_ANALYSIS_STATUSES.has(status);
+}
+
+function hasExplicitAnalysisFailure(
+  result: Record<string, unknown>,
+  data: Record<string, unknown>,
+): boolean {
+  const records = result === data ? [result] : [result, data];
+  for (const record of records) {
+    if (isExplicitAnalysisFailure(record)) return true;
+    const caseResults = optionalRecord(record.caseResults);
+    if (caseResults && Object.values(caseResults).some(isExplicitAnalysisFailure)) return true;
+  }
+  return false;
+}
+
+function hasExplicitAnalysisSuccess(
+  result: Record<string, unknown>,
+  data: Record<string, unknown>,
+): boolean {
+  const records = result === data ? [result] : [result, data];
+  for (const record of records) {
+    if (isExplicitAnalysisSuccess(record)) return true;
+    const caseResults = optionalRecord(record.caseResults);
+    if (caseResults && Object.values(caseResults).some(isExplicitAnalysisSuccess)) return true;
+  }
+  return false;
+}
+
 export function buildAnalysisToolSummary(args: {
   result: unknown;
   skillId?: string;
+  model?: Record<string, unknown>;
 }): Record<string, unknown> {
   const result = isRecord(args.result) ? args.result : {};
   const meta = isRecord(result.meta) ? result.meta : {};
   const data = getAnalysisPayload(result);
-  const status = typeof result.status === 'string' ? result.status : undefined;
-  const success = result.success !== false && status !== 'error';
+  const explicitFailure = hasExplicitAnalysisFailure(result, data);
+  const explicitSuccess = hasExplicitAnalysisSuccess(result, data);
+  const success = !explicitFailure && explicitSuccess;
 
   if (!success) {
-    const errorCode = normalizeAnalysisErrorCode(result.error_code, result.errorCode);
+    const invalidResult = !explicitFailure && !explicitSuccess;
+    const errorCode = invalidResult
+      ? 'ANALYSIS_RESULT_INVALID'
+      : normalizeAnalysisErrorCode(
+          result.error_code ?? data.error_code,
+          result.errorCode ?? data.errorCode,
+        );
     const diagnostics = pickAnalysisDiagnostics(result, meta);
     return {
       success: false,
       skillId: args.skillId,
       errorCode,
-      message: compactText(result.message) || 'Analysis execution failed',
+      message: compactText(result.message ?? data.message)
+        || (invalidResult
+          ? 'Analysis returned no explicit success or failure status'
+          : 'Analysis execution failed'),
       ...(diagnostics ? { diagnostics } : {}),
     };
   }
@@ -2000,7 +2257,7 @@ export function buildAnalysisToolSummary(args: {
     success: true,
     skillId: args.skillId,
     analysisMode: data?.analysisMode,
-    ...(buildSuccessfulAnalysisDetails(data, result) ?? {}),
+    ...(buildSuccessfulAnalysisDetails(data, result, args.model) ?? {}),
   };
 }
 
@@ -2084,6 +2341,8 @@ function detectStructuralTypeWithConfiguredLlm(
     locale: 'zh' | 'en';
     currentState?: DraftState;
     skillIds?: string[];
+    signal?: AbortSignal;
+    onUsage?: (usage: LlmTokenUsage) => void;
   },
 ): Promise<StructuralTypeMatch> {
   const routerLlm = createChatModel(0, { disableStreaming: true });
@@ -2093,6 +2352,8 @@ function detectStructuralTypeWithConfiguredLlm(
     args.locale,
     args.currentState,
     args.skillIds,
+    args.signal,
+    args.onUsage,
   );
 }
 
@@ -2125,13 +2386,17 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const message = resolveToolInputMessage(input.message, state?.lastUserMessage, state?.messages);
       const detectionMessage = resolveRetryTaskMessage(message);
+      const nestedUsage = benchmarkLlmUsageCollector();
       try {
         const match = await detectStructuralTypeWithConfiguredLlm(skillRuntime, {
           message: detectionMessage,
           locale,
           currentState: state?.draftState || undefined,
           skillIds,
+          signal: config.signal,
+          onUsage: nestedUsage.onUsage,
         });
+        const unsupported = match.supportLevel === 'unsupported';
         const result = {
           key: match.key,
           mappedType: match.mappedType,
@@ -2139,17 +2404,45 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
           routingSource: match.routingSource,
           supportLevel: match.supportLevel,
           supportNote: match.supportNote,
-          nextAction: 'extract_draft_params',
-          instruction: locale === 'zh'
-            ? '结构类型已识别。若用户请求建模、分析或报告，下一步调用 extract_draft_params；不要只输出结构类型后停止。'
-            : 'Structural type detected. If the user requested modeling, analysis, or reporting, call extract_draft_params next; do not stop after reporting the type.',
+          nextAction: unsupported ? 'explain_capability_boundary' : 'extract_draft_params',
+          instruction: unsupported
+            ? (locale === 'zh'
+              ? '当前技能或适配器不支持该请求。不得继续提取参数、构建模型或运行分析；请明确说明具体能力边界，并询问用户是否改用当前明确支持的替代工作流。'
+              : 'The current skills or adapters do not support this request. Do not extract parameters, build a model, or run analysis. Explain the specific capability boundary and ask whether the user wants a currently supported alternative workflow.')
+            : (locale === 'zh'
+              ? '结构类型已识别。若用户请求建模、分析或报告，下一步调用 extract_draft_params；不要只输出结构类型后停止。'
+              : 'Structural type detected. If the user requested modeling, analysis, or reporting, call extract_draft_params next; do not stop after reporting the type.'),
         };
         const stateUpdate: Partial<AgentState> = {};
         if (match.key) stateUpdate.structuralTypeKey = match.key;
         logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, extra: { matchedKey: match.key, skillId: match.skillId, routingSource: match.routingSource } });
-        return toolResult(toolCallId, 'detect_structure_type', JSON.stringify(result), stateUpdate);
+        return toolResult(
+          toolCallId,
+          'detect_structure_type',
+          JSON.stringify(result),
+          stateUpdate,
+          nestedUsage.total(),
+        );
       } catch (error) {
-        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, success: false, extra: { error: error instanceof Error ? error.message : String(error) } });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, success: false, extra: { error: errorMessage } });
+        if (
+          process.env.SCLAW_BENCHMARK_LLM_ONLY === '1'
+          && errorMessage.startsWith('LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT:')
+        ) {
+          return toolResult(
+            toolCallId,
+            'detect_structure_type',
+            JSON.stringify({
+              success: false,
+              errorCode: 'LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT',
+              message: errorMessage,
+              nextAction: 'retry_detection',
+            }),
+            undefined,
+            nestedUsage.total(),
+          );
+        }
         throw error;
       }
     },
@@ -2183,6 +2476,17 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const message = resolveToolInputMessage(input.message, state?.lastUserMessage, state?.messages);
       const extractionMessage = resolveRetryTaskMessage(message);
+      const nestedUsage = benchmarkLlmUsageCollector();
+      const extractionToolResult = (
+        content: string,
+        stateUpdate?: Partial<AgentState>,
+      ): Command => toolResult(
+        toolCallId,
+        'extract_draft_params',
+        content,
+        stateUpdate,
+        nestedUsage.total(),
+      );
 
       try {
         // Step 1: Detect structural type
@@ -2203,6 +2507,8 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           locale,
           currentState: existingState,
           skillIds,
+          signal: config.signal,
+          onUsage: nestedUsage.onUsage,
         });
         const matchedPlugin = match.skillId
           ? await skillRuntime.resolvePluginForType(match.skillId, skillIds)
@@ -2239,9 +2545,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
               rejectedRoutingSource: match.routingSource,
             },
           });
-          return toolResult(
-            toolCallId,
-            'extract_draft_params',
+          return extractionToolResult(
             JSON.stringify(preserved.responseJson),
             preserved.stateUpdate,
           );
@@ -2265,13 +2569,13 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             structuralTypeMatch: match,
             skillId: undefined,
             routingSource: match.routingSource,
-            extractionMode: 'deterministic',
+            extractionMode: 'not-applicable',
             ...buildDraftProgress(locale, ['inferredType']),
           };
           const stateUpdate: Partial<AgentState> = { draftState: nextState };
           if (match.key) stateUpdate.structuralTypeKey = match.key;
           logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: undefined, criticalMissing: 1, routingSource: match.routingSource } });
-          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+          return extractionToolResult(JSON.stringify(responseJson), stateUpdate);
         }
 
         // Step 2: Resolve plugin
@@ -2288,16 +2592,20 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             structuralTypeMatch: match,
             skillId: undefined,
             routingSource: match.routingSource,
-            extractionMode: 'deterministic',
+            extractionMode: 'unavailable',
             ...buildDraftProgress(locale, ['inferredType']),
           };
           logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: match.skillId, pluginResolved: false, routingSource: match.routingSource } });
-          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), { draftState: nextState });
+          return extractionToolResult(JSON.stringify(responseJson), { draftState: nextState });
         }
 
         // Generic skill: deterministic path (no LLM extraction needed)
         const stableExistingState = hasStableDraftType(existingState) ? existingState : undefined;
-        if (plugin.id === 'generic' && stableExistingState) {
+        if (
+          plugin.id === 'generic'
+          && stableExistingState
+          && process.env.SCLAW_BENCHMARK_LLM_ONLY !== '1'
+        ) {
           const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
           const resetToGeneric = isFreshGenericStructuralRoute(match);
           const nextState = withStructuralTypeState(
@@ -2318,7 +2626,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           };
           const stateUpdate: Partial<AgentState> = { draftState: nextState, structuralTypeKey: match.key };
           logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: plugin.id, extractionMode: 'deterministic', criticalMissing: missing.critical.length, routingSource: match.routingSource } });
-          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+          return extractionToolResult(JSON.stringify(responseJson), stateUpdate);
         }
 
         // Step 3: Sub-agent extracts parameters (skill manifest driven)
@@ -2329,6 +2637,9 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           locale,
           plugin,
           traceLogger: log,
+          requireLlmResult: process.env.SCLAW_BENCHMARK_LLM_ONLY === '1',
+          signal: config.signal,
+          onUsage: nestedUsage.onUsage,
         });
 
         // Step 4: Handler pipeline (extractDraft → mergeState → computeMissing)
@@ -2344,7 +2655,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         let missing = plugin.handler.computeMissing(nextState, 'execution');
         let extractionMode = draftPatch ? 'llm' : 'deterministic';
 
-        if (draftPatch && missing.critical.length > 0) {
+        if (shouldRetryDraftExtraction(draftPatch, missing, nextState)) {
           const retryDraftPatch = await invokeParamExtractor({
             message: extractionMessage,
             existingState: nextState,
@@ -2352,6 +2663,9 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             plugin,
             focusFields: missing.critical,
             traceLogger: log,
+            requireLlmResult: process.env.SCLAW_BENCHMARK_LLM_ONLY === '1',
+            signal: config.signal,
+            onUsage: nestedUsage.onUsage,
           });
           if (retryDraftPatch) {
             const retryPatch = plugin.handler.extractDraft({
@@ -2395,14 +2709,27 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         if (match.key) stateUpdate.structuralTypeKey = match.key;
 
         logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: plugin.id, extractionMode: responseJson.extractionMode, criticalMissing: missing.critical.length, routingSource: match.routingSource } });
-        return toolResult(
-          toolCallId,
-          'extract_draft_params',
-          JSON.stringify(responseJson),
-          stateUpdate,
-        );
+        return extractionToolResult(JSON.stringify(responseJson), stateUpdate);
       } catch (error) {
-        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, success: false, extra: { error: error instanceof Error ? error.message : String(error) } });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, success: false, extra: { error: errorMessage } });
+        if (
+          process.env.SCLAW_BENCHMARK_LLM_ONLY === '1'
+          && (
+            errorMessage.startsWith('LLM_PARAM_EXTRACTOR_INVALID_OUTPUT:')
+            || errorMessage.startsWith('LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT:')
+          )
+        ) {
+          const errorCode = errorMessage.startsWith('LLM_PARAM_EXTRACTOR_INVALID_OUTPUT:')
+            ? 'LLM_PARAM_EXTRACTOR_INVALID_OUTPUT'
+            : 'LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT';
+          return extractionToolResult(JSON.stringify({
+            success: false,
+            errorCode,
+            message: errorMessage,
+            nextAction: 'retry_extraction',
+          }));
+        }
         throw error;
       }
     },
@@ -2668,6 +2995,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
     async (input: {
       analysisType: string;
       analysisSkillId?: string;
+      loadCombinationId?: string;
       floorLoadTransferMode?: 'auto_code_cn' | 'node_tributary' | 'one_way_slab' | 'two_way_slab';
       seismicWorkflowJson?: string;
     }, config: LangGraphRunnableConfig) => {
@@ -2765,6 +3093,42 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       }
 
       const engineClient = configurable.engineClient;
+      const rawLoadCombinations = Array.isArray(model.load_combinations)
+        ? model.load_combinations
+        : Array.isArray(model.loadCombinations)
+          ? model.loadCombinations
+          : [];
+      const loadCombinationIds = rawLoadCombinations
+        .filter(isRecord)
+        .map((combination) => pickStringLike(combination, 'id'))
+        .filter((id): id is string => !!id);
+      const requestedLoadCombinationId = input.loadCombinationId?.trim();
+      if (requestedLoadCombinationId && !loadCombinationIds.includes(requestedLoadCombinationId)) {
+        return toolResult(
+          toolCallId,
+          'run_analysis',
+          JSON.stringify({
+            success: false,
+            error_code: 'LOAD_COMBINATION_NOT_FOUND',
+            message: `Load combination '${requestedLoadCombinationId}' is not present in the current model.`,
+            availableLoadCombinationIds: loadCombinationIds,
+          }),
+        );
+      }
+      if (!requestedLoadCombinationId && loadCombinationIds.length > 1) {
+        return toolResult(
+          toolCallId,
+          'run_analysis',
+          JSON.stringify({
+            success: false,
+            error_code: 'LOAD_COMBINATION_REQUIRED',
+            message: 'The current model declares multiple load combinations. Select one before analysis.',
+            availableLoadCombinationIds: loadCombinationIds,
+          }),
+        );
+      }
+      const loadCombinationId = requestedLoadCombinationId
+        || (loadCombinationIds.length === 1 ? loadCombinationIds[0] : undefined);
       const postToEngineWithRetry = async (
         p: string,
         payload: Record<string, unknown>,
@@ -2792,6 +3156,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         model,
         parameters: {
           traceId,
+          ...(loadCombinationId ? { loadCombinationId } : {}),
           ...(input.floorLoadTransferMode ? { floorLoadTransferMode: input.floorLoadTransferMode } : {}),
           ...(analysisType === 'seismic' && seismicWorkflow ? { seismicWorkflow } : {}),
         },
@@ -2815,6 +3180,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       const analysisSummary = buildAnalysisToolSummary({
         result: analysisResult,
         skillId: result.skillId,
+        model,
       });
       const analysisSucceeded = analysisSummary.success !== false;
       logToolCall(log, {
@@ -2835,7 +3201,8 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       description:
         'Execute a structural analysis (static, dynamic, seismic, or nonlinear). ' +
         'Reads the model from conversation state automatically — do NOT pass it as a parameter. ' +
-        'Returns analysis results including displacements, forces, and reactions. ' +
+        'Returns analysis results including displacements, forces, and reactions, plus compact normalized-model ' +
+        'node coordinates and element connectivity for grounding result IDs to physical locations. ' +
         'The analysis engine is resolved from the selected analysis skill automatically. ' +
         'For China seismic analysis, pass seismicWorkflowJson only as the structured result of semantic understanding.',
       schema: z.object({
@@ -2846,6 +3213,10 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
           .enum(ANALYSIS_SKILL_ID_VALUES)
           .optional()
           .describe('Optional structured analysis skill ID from LLM semantic understanding or UI selection. Do not infer it from keyword matching.'),
+        loadCombinationId: z
+          .string()
+          .optional()
+          .describe('Optional load-combination ID from the current model. When the model declares exactly one combination, the tool selects it automatically.'),
         floorLoadTransferMode: z
           .enum(['auto_code_cn', 'node_tributary', 'one_way_slab', 'two_way_slab'])
           .optional()
@@ -3011,6 +3382,7 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
       const result = await skillRuntime.executeReportSkill({
         message: input.message,
         analysisType,
+        normalizedModel: state?.model,
         analysis,
         codeCheck,
         format: 'both',

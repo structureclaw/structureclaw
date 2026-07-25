@@ -157,6 +157,91 @@ describe("analysis tool summary", () => {
     });
   });
 
+  test("automatically analyzes the only load combination declared by the current model", async () => {
+    const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
+    let capturedOptions;
+    const runAnalysis = createRunAnalysisTool({
+      async executeAnalysisSkill(options) {
+        capturedOptions = options;
+        return {
+          skillId: "opensees-static",
+          result: {
+            success: true,
+            data: {
+              status: "success",
+              displacements: {},
+              reactions: {},
+              forces: {},
+            },
+          },
+        };
+      },
+    });
+
+    await runAnalysis.invoke({ analysisType: "static" }, {
+      toolCall: { id: "call-test" },
+      configurable: {
+        skillScope: ["frame", "opensees-static"],
+        agentState: {
+          lastUserMessage: "Analyze the current model.",
+          model: {
+            schema_version: "2.0.0",
+            nodes: [],
+            elements: [],
+            materials: [],
+            sections: [],
+            load_cases: [
+              { id: "D", type: "dead", loads: [] },
+              { id: "L", type: "live", loads: [] },
+            ],
+            load_combinations: [
+              { id: "ULS", factors: { D: 1.2, L: 1.4 } },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(capturedOptions.parameters.loadCombinationId).toBe("ULS");
+  });
+
+  test("requires an explicit selection when the current model has multiple load combinations", async () => {
+    const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
+    const runAnalysis = createRunAnalysisTool({
+      executeAnalysisSkill() {
+        throw new Error("executeAnalysisSkill should not be called");
+      },
+    });
+
+    const command = await runAnalysis.invoke({ analysisType: "static" }, {
+      toolCall: { id: "call-test" },
+      configurable: {
+        skillScope: ["frame", "opensees-static"],
+        agentState: {
+          lastUserMessage: "Analyze the current model.",
+          model: {
+            schema_version: "2.0.0",
+            nodes: [],
+            elements: [],
+            materials: [],
+            sections: [],
+            load_cases: [{ id: "D", type: "dead", loads: [] }],
+            load_combinations: [
+              { id: "ULS", factors: { D: 1.2 } },
+              { id: "SLS", factors: { D: 1 } },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(JSON.parse(command.update.messages[0].content)).toMatchObject({
+      success: false,
+      error_code: "LOAD_COMBINATION_REQUIRED",
+      availableLoadCombinationIds: ["ULS", "SLS"],
+    });
+  });
+
   test("passes structured seismic workflow JSON through run_analysis parameters", async () => {
     const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
     let capturedOptions;
@@ -1948,6 +2033,36 @@ describe("analysis tool summary", () => {
     });
   });
 
+  test("preserves typed capability-boundary diagnostics", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "yjk-static",
+      result: {
+        success: false,
+        error_code: "ENGINE_INPUT_UNSUPPORTED",
+        message: "YJK requires a canonical 3-D building model.",
+        meta: {
+          engineId: "builtin-yjk",
+          failureKind: "capability-boundary",
+          capability: "canonical-3d-building-model",
+          exceptionType: "AnalysisCapabilityError",
+        },
+      },
+    });
+
+    expect(summary).toMatchObject({
+      success: false,
+      errorCode: "ENGINE_INPUT_UNSUPPORTED",
+      diagnostics: {
+        engineId: "builtin-yjk",
+        failureKind: "capability-boundary",
+        capability: "canonical-3d-building-model",
+        exceptionType: "AnalysisCapabilityError",
+      },
+    });
+  });
+
   test("keeps recent log tails when compacting large failed analysis messages", async () => {
     const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
     const tailMarker = "YJK_LATEST_STDERR_MARKER";
@@ -1972,6 +2087,54 @@ describe("analysis tool summary", () => {
     expect(summary.diagnostics.stderrTail).toContain(tailMarker);
   });
 
+  test("does not summarize explicit nested or per-case failures as successful analysis", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const nestedFailure = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      result: {
+        data: {
+          status: "failed",
+          displacements: { N2: { ux: 0.01 } },
+        },
+      },
+    });
+    const caseFailure = buildAnalysisToolSummary({
+      skillId: "yjk-static",
+      result: {
+        data: {
+          caseResults: {
+            D: {
+              status: "error",
+              displacements: { N2: { ux: 0.01 } },
+            },
+          },
+        },
+      },
+    });
+
+    expect(nestedFailure.success).toBe(false);
+    expect(caseFailure.success).toBe(false);
+  });
+
+  test("does not summarize a metadata-only analysis artifact as successful", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      result: {
+        meta: {
+          traceId: "trace-without-result",
+        },
+      },
+    });
+
+    expect(summary).toMatchObject({
+      success: false,
+      errorCode: "ANALYSIS_RESULT_INVALID",
+    });
+  });
+
   test("summarizes successful analysis artifacts for model follow-up reasoning", async () => {
     const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
 
@@ -1981,6 +2144,19 @@ describe("analysis tool summary", () => {
         success: true,
         data: {
           analysisMode: "opensees_2d_frame",
+          meta: {
+            coordinateSemantics: "global-z-up",
+            dimension: "2d",
+            plane: "xz",
+            activeDofs: ["ux", "uz", "ry"],
+            nodalResultFrame: "global",
+            elementForceFrame: "element-local",
+            units: {
+              displacement: "m",
+              force: "kN",
+              moment: "kN.m",
+            },
+          },
           displacements: {
             "1": { ux: 0, uy: 0, uz: 0 },
             "2": { ux: 0.001, uy: 0, uz: -0.02 },
@@ -2058,6 +2234,41 @@ describe("analysis tool summary", () => {
         controlElementMoment: "E1",
         controlNodeReaction: "1",
       },
+      responses: {
+        coordinateSemantics: "global-z-up",
+        dimension: "2d",
+        plane: "xz",
+        activeDofs: ["ux", "uz", "ry"],
+        nodalResultFrame: "global",
+        elementForceFrame: "element-local",
+        units: {
+          displacement: "m",
+          force: "kN",
+          moment: "kN.m",
+        },
+        displacements: {
+          totalCount: 2,
+          truncated: false,
+          values: {
+            "1": { ux: 0, uy: 0, uz: 0 },
+            "2": { ux: 0.001, uy: 0, uz: -0.02 },
+          },
+        },
+        reactions: {
+          totalCount: 1,
+          truncated: false,
+          values: {
+            "1": { fx: -3, fz: 10 },
+          },
+        },
+        memberForces: {
+          totalCount: 1,
+          truncated: false,
+          values: {
+            E1: { axial: 10, n1: { V: 4, M: 8 } },
+          },
+        },
+      },
       floorLoadTransfer: {
         effectiveMode: "two_way_slab",
         method: "Two-way slab load transfer with equivalent uniform beam loads",
@@ -2080,8 +2291,39 @@ describe("analysis tool summary", () => {
       },
       warnings: ["small warning"],
     });
-    expect(JSON.stringify(summary)).not.toContain("displacements");
-    expect(JSON.stringify(summary)).not.toContain("forces");
+  });
+
+  test("keeps controlling response entities when a large result is truncated", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+    const displacements = Object.fromEntries(
+      Array.from({ length: 65 }, (_, index) => [
+        `N${index + 1}`,
+        { ux: (index + 1) / 1000, uz: -(index + 1) / 1000 },
+      ]),
+    );
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      result: {
+        success: true,
+        data: {
+          analysisMode: "opensees_3d_frame",
+          displacements,
+          envelope: {
+            maxAbsDisplacement: 0.065,
+            controlNodeDisplacement: "N65",
+          },
+        },
+      },
+    });
+
+    expect(summary.responses.displacements.totalCount).toBe(65);
+    expect(summary.responses.displacements.truncated).toBe(true);
+    expect(Object.keys(summary.responses.displacements.values)).toHaveLength(60);
+    expect(summary.responses.displacements.values.N65).toEqual({
+      ux: 0.065,
+      uz: -0.065,
+    });
   });
 
   test("summarizes successful analysis artifacts returned at the top level", async () => {
@@ -2129,6 +2371,70 @@ describe("analysis tool summary", () => {
         controlElementMoment: "E1",
       },
       warnings: ["top-level warning"],
+    });
+  });
+
+  test("grounds normalized response IDs in model coordinates and connectivity", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      model: {
+        coordinate_system: {
+          semantics: "global-z-up",
+          dimension: "2d",
+          plane: "xz",
+        },
+        nodes: [
+          { id: "1", x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: "2", x: 3.25, y: 0, z: 0 },
+          { id: "3", x: 5, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: "4", x: 6.5, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: "1", type: "beam", nodes: ["1", "2"], material: "1", section: "1" },
+          { id: "2", type: "beam", nodes: ["2", "3"], material: "1", section: "1" },
+          { id: "3", type: "beam", nodes: ["3", "4"], material: "1", section: "1" },
+        ],
+      },
+      result: {
+        success: true,
+        data: {
+          analysisMode: "opensees_2d_frame",
+          displacements: {
+            "2": { uz: -0.0040337 },
+            "4": { uz: 0.0031955 },
+          },
+        },
+      },
+    });
+
+    expect(summary.modelContext).toMatchObject({
+      coordinateSystem: {
+        semantics: "global-z-up",
+        dimension: "2d",
+        plane: "xz",
+      },
+      nodes: {
+        totalCount: 4,
+        truncated: false,
+        values: {
+          "2": { x: 3.25, y: 0, z: 0 },
+          "4": { x: 6.5, y: 0, z: 0 },
+        },
+      },
+      elements: {
+        totalCount: 3,
+        truncated: false,
+        values: {
+          "3": {
+            type: "beam",
+            nodes: ["3", "4"],
+            material: "1",
+            section: "1",
+          },
+        },
+      },
     });
   });
 });

@@ -19,9 +19,77 @@ type ChatModelConfigLike = Pick<
 
 export interface ChatModelRuntimeOptions {
   disableStreaming?: boolean;
+  maxTokens?: number;
+}
+
+export interface LlmTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }
 
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_BENCHMARK_MAX_TOKENS = 16384;
+
+export function resolveBenchmarkMaxTokens(): number | undefined {
+  if (process.env.SCLAW_BENCHMARK_LLM_ONLY !== '1') return undefined;
+  const rawValue = process.env.SCLAW_BENCHMARK_MAX_TOKENS;
+  if (rawValue === undefined || rawValue.trim() === '') {
+    return DEFAULT_BENCHMARK_MAX_TOKENS;
+  }
+  const parsed = Number(rawValue);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_BENCHMARK_MAX_TOKENS;
+}
+
+function usageRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function nonNegativeUsageNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+export function extractLlmTokenUsage(message: unknown): LlmTokenUsage | undefined {
+  const record = usageRecord(message);
+  if (!record) return undefined;
+  const usageMetadata = usageRecord(record.usage_metadata);
+  const responseMetadata = usageRecord(record.response_metadata);
+  const responseTokenUsage = usageRecord(responseMetadata?.tokenUsage);
+  const inputTokens = nonNegativeUsageNumber(
+    usageMetadata?.input_tokens ?? responseTokenUsage?.promptTokens,
+  );
+  const outputTokens = nonNegativeUsageNumber(
+    usageMetadata?.output_tokens ?? responseTokenUsage?.completionTokens,
+  );
+  const totalTokens = nonNegativeUsageNumber(
+    usageMetadata?.total_tokens ?? responseTokenUsage?.totalTokens,
+  );
+  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    totalTokens: totalTokens ?? (inputTokens ?? 0) + (outputTokens ?? 0),
+  };
+}
+
+export function mergeLlmTokenUsage(usages: LlmTokenUsage[]): LlmTokenUsage | undefined {
+  if (usages.length === 0) return undefined;
+  return usages.reduce<LlmTokenUsage>(
+    (total, usage) => ({
+      inputTokens: total.inputTokens + usage.inputTokens,
+      outputTokens: total.outputTokens + usage.outputTokens,
+      totalTokens: total.totalTokens + usage.totalTokens,
+    }),
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+  );
+}
 
 function normalizeProviderName(rawValue: string | undefined): LlmProvider | undefined {
   const normalized = rawValue?.trim().toLowerCase();
@@ -120,6 +188,7 @@ export function buildChatModelOptions(
   runtimeOptions: ChatModelRuntimeOptions = {},
 ) {
   const disableStreaming = runtimeOptions.disableStreaming ?? false;
+  const maxTokens = runtimeOptions.maxTokens;
   const options = {
     modelName: modelConfig.llmModel,
     timeout: modelConfig.llmTimeoutMs,
@@ -127,6 +196,7 @@ export function buildChatModelOptions(
     apiKey: modelConfig.llmApiKey,
     disableStreaming,
     ...(disableStreaming ? { streaming: false } : {}),
+    ...(Number.isSafeInteger(maxTokens) && (maxTokens ?? 0) > 0 ? { maxTokens } : {}),
     configuration: {
       baseURL: modelConfig.llmBaseUrl,
     },
@@ -143,6 +213,7 @@ export function buildAnthropicChatModelOptions(
   runtimeOptions: ChatModelRuntimeOptions = {},
 ) {
   const disableStreaming = runtimeOptions.disableStreaming ?? false;
+  const maxTokens = runtimeOptions.maxTokens;
   const anthropicApiUrl = normalizeAnthropicBaseUrl(modelConfig.llmBaseUrl);
   const options = {
     model: modelConfig.llmModel,
@@ -150,6 +221,7 @@ export function buildAnthropicChatModelOptions(
     maxRetries: modelConfig.llmMaxRetries,
     disableStreaming,
     ...(disableStreaming ? { streaming: false } : {}),
+    ...(Number.isSafeInteger(maxTokens) && (maxTokens ?? 0) > 0 ? { maxTokens } : {}),
     ...(anthropicApiUrl ? { anthropicApiUrl } : {}),
     clientOptions: {
       timeout: modelConfig.llmTimeoutMs,
@@ -197,6 +269,11 @@ function getReasoningContent(message: unknown): ReasoningValue | undefined {
   if (!hasOwn(record, 'reasoning_content')) return undefined;
   const reasoningContent = record.reasoning_content;
   return typeof reasoningContent === 'string' || reasoningContent === null ? reasoningContent : undefined;
+}
+
+export function getReasoningContentLength(message: unknown): number {
+  const reasoningContent = getReasoningContent(message);
+  return typeof reasoningContent === 'string' ? reasoningContent.length : 0;
 }
 
 export function attachDeepSeekReasoningContent(
@@ -297,10 +374,14 @@ export function createChatModel(
     return null;
   }
 
+  const effectiveRuntimeOptions = {
+    ...runtimeOptions,
+    maxTokens: runtimeOptions.maxTokens ?? resolveBenchmarkMaxTokens(),
+  };
   const model = resolveLlmProvider(effectiveSettings) === 'anthropic'
-    ? new ChatAnthropic(buildAnthropicChatModelOptions(effectiveSettings, temperature, runtimeOptions))
+    ? new ChatAnthropic(buildAnthropicChatModelOptions(effectiveSettings, temperature, effectiveRuntimeOptions))
     : new ChatOpenAI(withProviderCompatibility(
-      buildChatModelOptions(effectiveSettings, temperature, runtimeOptions),
+      buildChatModelOptions(effectiveSettings, temperature, effectiveRuntimeOptions),
     ));
 
   return wrapWithLlmLogging(model, () => getEffectiveLlmSettings().llmModel);
@@ -315,13 +396,17 @@ export function createVisionChatModel(
     return null;
   }
 
+  const effectiveRuntimeOptions = {
+    ...runtimeOptions,
+    maxTokens: runtimeOptions.maxTokens ?? resolveBenchmarkMaxTokens(),
+  };
   const model = resolveLlmProvider(
     effectiveSettings,
     process.env.LLM_VISION_PROVIDER ?? process.env.LLM_PROVIDER,
   ) === 'anthropic'
-    ? new ChatAnthropic(buildAnthropicChatModelOptions(effectiveSettings, temperature, runtimeOptions))
+    ? new ChatAnthropic(buildAnthropicChatModelOptions(effectiveSettings, temperature, effectiveRuntimeOptions))
     : new ChatOpenAI(withProviderCompatibility(
-      buildChatModelOptions(effectiveSettings, temperature, runtimeOptions),
+      buildChatModelOptions(effectiveSettings, temperature, effectiveRuntimeOptions),
     ));
 
   return wrapWithLlmLogging(model, () => getEffectiveVisionLlmSettings()?.llmModel ?? effectiveSettings.llmModel);

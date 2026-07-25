@@ -6,7 +6,12 @@
  * some OpenAI-compatible providers reject the nested agent's reconstructed
  * internal messages with "role information cannot be empty".
  */
-import { createChatModel } from '../utils/llm.js';
+import {
+  createChatModel,
+  extractLlmTokenUsage,
+  getReasoningContentLength,
+  type LlmTokenUsage,
+} from '../utils/llm.js';
 import { logger as rootLogger } from '../utils/agent-logger.js';
 import type { Logger } from 'pino';
 import type { AgentSkillPlugin, DraftState } from '../agent-runtime/types.js';
@@ -87,17 +92,18 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
       '{ "engineeringDraft":',
       '{',
       '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
-      '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
+      '  "geometry": { "lengthM": number, "heightM": number, "mezzanineHeightM": number, "mezzanineLengthM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
       '  "topology": { "nodes": [{ "id": string, "x": number, "y": number, "z": number, "restraints": boolean[6] }], "members": [{ "id": string, "nodes": [string, string] }] },',
+      '  // restraints 顺序严格为 [ux,uy,uz,rx,ry,rz]，true 表示约束。X-Z 平面铰支座为 [true,true,true,false,false,false]，沿全局 X 向可滑动的滚动支座为 [false,true,true,false,false,false]。',
       '  "material": { "family": "steel|concrete|composite|timber|masonry|generic", "grade": string, "rebarGrade": string },',
       '  "sections": { "beam": string, "column": string, "member": string },',
       '  "boundary": { "supportType": "cantilever|simply-supported|fixed-fixed|fixed-pinned", "frameBaseSupportType": "fixed|pinned", "supportPositionsM": number[] },',
       '  "loads": [',
-      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "story": number, "nodeRole": string } }',
+      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "story": number, "nodeRole": string }, "caseId": string, "caseType": "dead|live|wind|seismic|other" } // spanIndex 和 story 均从 1 开始；明确给出工况时必须保留 caseId/caseType',
       '  ],',
       '  "seismicMemberEvidence": { "byElementId": { "E1": { "seismicCapacity": object, "capacityDesign": object, "strongShearWeakBending": object, "shearCompression": object, "jointCore": object, "wallData": object, "boundaryElement": object, "steelSeismicDetailing": object } } },',
       '  "wind": { "basicPressureKNM2": number, "terrainRoughness": "A|B|C|D", "shapeFactor": number, "heightVariationFactor": number },',
-      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
+      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk", "loadCombinations": [{ "id": string, "factors": { "<loadCaseId>": number } }] }',
       '} },',
       '"draftIssues": [',
       '  { "field": string, "value": any, "severity": "invalid|ambiguous|unrealistic|conflict", "reason": string, "question": string }',
@@ -122,17 +128,18 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
     '{ "engineeringDraft":',
     '{',
     '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
-    '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
+    '  "geometry": { "lengthM": number, "heightM": number, "mezzanineHeightM": number, "mezzanineLengthM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
     '  "topology": { "nodes": [{ "id": string, "x": number, "y": number, "z": number, "restraints": boolean[6] }], "members": [{ "id": string, "nodes": [string, string] }] },',
+    '  // restraints are exactly [ux,uy,uz,rx,ry,rz], where true means restrained. In an X-Z model, a pin is [true,true,true,false,false,false] and a roller free in global X is [false,true,true,false,false,false].',
       '  "material": { "family": "steel|concrete|composite|timber|masonry|generic", "grade": string, "rebarGrade": string },',
       '  "sections": { "beam": string, "column": string, "member": string },',
       '  "boundary": { "supportType": "cantilever|simply-supported|fixed-fixed|fixed-pinned", "frameBaseSupportType": "fixed|pinned", "supportPositionsM": number[] },',
       '  "loads": [',
-      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "story": number, "nodeRole": string } }',
+      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "story": number, "nodeRole": string }, "caseId": string, "caseType": "dead|live|wind|seismic|other" } // spanIndex and story are 1-based; preserve caseId/caseType whenever a load case is explicit',
       '  ],',
       '  "seismicMemberEvidence": { "byElementId": { "E1": { "seismicCapacity": object, "capacityDesign": object, "strongShearWeakBending": object, "shearCompression": object, "jointCore": object, "wallData": object, "boundaryElement": object, "steelSeismicDetailing": object } } },',
       '  "wind": { "basicPressureKNM2": number, "terrainRoughness": "A|B|C|D", "shapeFactor": number, "heightVariationFactor": number },',
-      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
+      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk", "loadCombinations": [{ "id": string, "factors": { "<loadCaseId>": number } }] }',
     '} },',
     '"draftIssues": [',
     '  { "field": string, "value": any, "severity": "invalid|ambiguous|unrealistic|conflict", "reason": string, "question": string }',
@@ -186,10 +193,11 @@ export function buildParamExtractorPrompt(
       '- 优先输出 engineeringDraft；为了兼容旧链路，也可以同时输出 draftPatch',
       '- draftPatch 字段名必须与当前结构技能参数说明一致',
       '- 长度单位 m，力单位 kN，线荷载 kN/m，面荷载 kN/m2',
-      '- 保留已有 draftState 中的所有参数值，补充新提取的值',
+      '- 已有 draftState 由系统保留；本轮 JSON 只输出用户最新消息明确新增或更正的字段，不要重复未改变的旧参数',
       '- 已有 draftState 只代表已接受的参数；如果当前用户消息是在回答追问或更正缺失/无效字段，必须输出新给出的字段，不要重复旧的缺参或无效诊断',
       '- 不确定时省略字段，不要猜测',
-      '- 如果用户明确给出非正几何尺寸、非正荷载大小、语义矛盾或需要工程判断的异常值，不要把该值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields',
+      '- 不得补写用户未提供的荷载单位或荷载种类；若荷载数值没有单位，或“楼面荷载”等表述无法区分总力、线荷载或面荷载，必须省略该荷载，输出 draftIssues，并把对应荷载字段写入 skillState.invalidDraftFields，要求用户确认单位和荷载种类',
+      '- 如果用户给出数学上无效的几何尺寸、荷载符号/单位/位置含义不明确，或要求彼此矛盾，不要把相关值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields。数值仅仅非常规或很大/很小并不自动构成无效输入',
       '- 负号可能表示方向或吸力时，必须用 draftIssues 标记为 ambiguous 并追问；只有方向明确且数值大小为正时，才写入荷载 magnitude',
       '- 对框架楼面线荷载/面荷载（如 kN/m、kN/m2），如果已有层数和跨度信息，应输出 engineeringDraft.loads 中的 line/area 荷载；不要因为它不是总 kN 就追问',
       '- 对“基本风压 / basic wind pressure”输出 engineeringDraft.wind.basicPressureKNM2；不要把风压当作竖向楼面荷载',
@@ -198,6 +206,8 @@ export function buildParamExtractorPrompt(
       '- 如果用户提供构件抗震承载力、gammaRE、强剪弱弯、剪压比、节点核芯区、抗震墙边缘构件、钢构件长细比或宽厚比证据，必须保留为结构化 seismicMemberEvidence 或 seismicWorkflow.memberEvidence；不要把证据只写成自然语言备注，也不要由 LLM 判断条文通过或失败',
       '- 嵌套数组字段必须输出完整对象；例如 floorLoads 的每一项都必须包含 story',
       '- 如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力',
+      '- 如果用户明确区分荷载工况，必须在每个荷载中保留 caseId 和 caseType；如果明确给出荷载组合，必须原样输出 engineeringDraft.analysis.loadCombinations，不得把不同工况预先合并',
+      '- 源面荷载及其按受荷宽度折算得到的线荷载不是两个独立荷载；若用户要求采用折算结果，只输出折算后的线荷载，除非用户明确要求两者叠加',
       '- 如果用户或附件摘要明确给出节点坐标和构件连接关系，必须原样输出 engineeringDraft.topology，不要用规则化拓扑替换',
       '- 不输出元数据字段（updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote）',
       '- 不要为了补齐字段而猜测未明确给出的工程参数',
@@ -225,18 +235,21 @@ export function buildParamExtractorPrompt(
     '- Prefer engineeringDraft; you may also include draftPatch for legacy compatibility',
     '- draftPatch field names MUST match the current structural skill parameter guidance',
     '- Length in meters, force in kN, line load in kN/m, area load in kN/m2',
-    '- Preserve ALL existing draftState parameter values, add newly extracted ones',
+    '- Existing draftState values are preserved by the system; output only fields explicitly added or corrected by the latest user message, without repeating unchanged prior parameters',
     '- Treat the existing draftState as accepted parameters only; if the current user message answers a clarification question or corrects a missing/invalid field, output the newly provided field instead of repeating the old missing/invalid diagnostic',
-    '- Omit fields you are unsure about — do NOT guess',
-    '- If the user gives non-positive geometry dimensions, non-positive load magnitudes, semantic conflicts, or values that need engineering judgment, do NOT write that value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields',
+      '- Omit fields you are unsure about — do NOT guess',
+      '- Never supply a load unit or load kind that the user did not provide; if a load magnitude has no unit, or wording such as "floor load" does not distinguish total force, line load, or area load, omit that load, output draftIssues, put the corresponding load field in skillState.invalidDraftFields, and ask the user to confirm the unit and load kind',
+      '- If geometry is mathematically invalid, a load sign/unit/location is ambiguous, or requirements contradict one another, do NOT write the affected value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields. An unusual, large, or small value is not invalid by magnitude alone',
     '- If a negative sign may mean direction or suction/uplift, mark it as an ambiguous draftIssue and ask for clarification; only write a load magnitude when the direction is clear and the magnitude is positive',
     '- For frame floor line/area loads such as kN/m or kN/m2, output line/area entries in engineeringDraft.loads when story and span geometry are available; do not ask for total kN just because the user provided intensity units',
     '- For basic wind pressure, output engineeringDraft.wind.basicPressureKNM2; do not treat wind pressure as a vertical floor load',
     '- When the user asks for China seismic design, response spectrum, time history, pushover, elastic-plastic time history, seismic intensity, design group, site class, or ground-motion selection, output skillState.seismicWorkflow from whole-message semantic understanding; method selection may only come from structured semantic fields, never keyword or regex matching',
     '- If the user provides a GB18306 zonation table, ground-motion files, or a local ground-motion catalog, map only the provided data into seismicWorkflow.designBasis.groundMotionZonation or seismicWorkflow.groundMotionSet; do not invent intensity, design group, characteristic period, or ground-motion records from city names or prose',
     '- If the user provides member seismic capacity, gammaRE, capacity-design, strong-shear weak-bending, shear-compression, joint-core, seismic-wall boundary-element, steel slenderness, or steel width-thickness evidence, preserve it as structured seismicMemberEvidence or seismicWorkflow.memberEvidence; do not leave it only as prose and do not have the LLM decide clause pass/fail status',
-    '- Nested array fields must contain complete objects; for example each floorLoads item must include story',
-    '- If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads',
+      '- Nested array fields must contain complete objects; for example each floorLoads item must include story',
+      '- If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads',
+      '- If the user explicitly distinguishes load cases, preserve caseId and caseType on every load; if a load combination is explicit, reproduce it in engineeringDraft.analysis.loadCombinations without pre-combining the cases',
+      '- A source area load and the line load derived from it by tributary width are not independent loads; when the user says to apply the converted result, emit only the derived line load unless the user explicitly requires both to be superimposed',
     '- If the user or attachment summary explicitly gives node coordinates and member connectivity, preserve them in engineeringDraft.topology instead of replacing them with a regularized topology',
     '- Do NOT output metadata fields (updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote)',
     '- Do not guess engineering parameters that are not clear from the message',
@@ -281,10 +294,11 @@ function buildFocusedParamExtractorPrompt(
       engineeringDraftSchemaDescription(locale),
       '',
       '规则：',
-      '- 保留已有 draftState 中的所有参数值，补充用户最新回答明确给出的字段',
+      '- 已有 draftState 由系统保留；本轮 JSON 只输出用户最新回答明确补充或更正的重点字段',
       '- 如果用户最新回答明确提供了本轮重点字段，必须输出该字段对应的 engineeringDraft/draftPatch',
       '- 不要把旧的缺参诊断或无效诊断重复输出为本轮结果',
       '- 不确定时省略字段，不要猜测',
+      '- 若本轮荷载数值仍没有单位，或仍无法区分总力、线荷载或面荷载，不得自行补写；输出 draftIssues 和 skillState.invalidDraftFields，并继续要求确认单位和荷载种类',
       '- 不要 markdown 包装或解释',
       '',
       `已有 draftState:\n${stateJson}`,
@@ -310,10 +324,11 @@ function buildFocusedParamExtractorPrompt(
     engineeringDraftSchemaDescription(locale),
     '',
     'Rules:',
-    '- Preserve all existing draftState parameter values and add fields explicitly provided by the latest user answer',
+    '- Existing draftState values are preserved by the system; output only focus fields explicitly supplied or corrected by the latest user answer',
     '- If the latest user answer clearly provides a focus field, you MUST output the corresponding engineeringDraft/draftPatch field',
     '- Do not repeat old missing/invalid diagnostics as the result for this turn',
     '- Omit fields you are unsure about; do not guess',
+    '- If the latest load magnitude still has no unit, or still does not distinguish total force, line load, or area load, do not supply one; output draftIssues and skillState.invalidDraftFields and continue asking for the unit and load kind',
     '- No markdown fences, no explanations',
     '',
     `Existing draftState:\n${stateJson}`,
@@ -421,6 +436,23 @@ export interface ParamExtractorInput {
   focusFields?: string[];
   /** Per-request logger with traceId/conversationId. Falls back to root logger. */
   traceLogger?: Logger;
+  /** Benchmark-only: do not replace LLM failures or unusable output with handler extraction. */
+  requireLlmResult?: boolean;
+  /** Cancels an in-flight extraction when the enclosing agent run is aborted. */
+  signal?: AbortSignal;
+  /** Records provider usage for benchmark efficiency metrics. */
+  onUsage?: (usage: LlmTokenUsage) => void;
+  /** Test injection; production callers use the configured chat model. */
+  llm?: {
+    invoke: (
+      prompt: string,
+      options?: { signal?: AbortSignal },
+    ) => Promise<{
+      content: unknown;
+      response_metadata?: Record<string, unknown>;
+      usage_metadata?: Record<string, unknown>;
+    }>;
+  } | null;
 }
 
 export async function invokeParamExtractor(
@@ -431,8 +463,13 @@ export async function invokeParamExtractor(
   const locale = input.locale;
   log.info({ pluginId, locale }, 'param extractor started');
 
-  const llm = createChatModel(0);
-  if (!llm) return null;
+  const llm = input.llm === undefined ? createChatModel(0) : input.llm;
+  if (!llm) {
+    if (input.requireLlmResult) {
+      throw new Error('LLM_PARAM_EXTRACTOR_CONFIGURATION_ERROR: no LLM is configured');
+    }
+    return null;
+  }
 
   const start = Date.now();
   const prompt = buildParamExtractorPrompt(
@@ -443,14 +480,13 @@ export async function invokeParamExtractor(
     input.focusFields,
   );
 
+  let result: {
+    content: unknown;
+    response_metadata?: Record<string, unknown>;
+    usage_metadata?: Record<string, unknown>;
+  };
   try {
-    const result = await llm.invoke(prompt);
-    const content = typeof result.content === 'string'
-      ? result.content
-      : JSON.stringify(result.content);
-    const patch = parseDraftPatchFromContent(content);
-    log.debug({ pluginId, durationMs: Date.now() - start, hasDraftPatch: !!patch }, 'param extractor completed');
-    return patch;
+    result = await llm.invoke(prompt, { signal: input.signal });
   } catch (error) {
     log.warn(
       {
@@ -458,8 +494,47 @@ export async function invokeParamExtractor(
         durationMs: Date.now() - start,
         error: error instanceof Error ? error.message : String(error),
       },
-      'param extractor LLM failed; falling back to handler extraction',
+      input.requireLlmResult
+        ? 'param extractor LLM failed in benchmark LLM-only mode'
+        : 'param extractor LLM failed; falling back to handler extraction',
     );
+    if (input.requireLlmResult) {
+      throw new Error(
+        `LLM_PARAM_EXTRACTOR_INFRASTRUCTURE_ERROR: network error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     return null;
   }
+
+  const usage = extractLlmTokenUsage(result);
+  if (usage) input.onUsage?.(usage);
+  const content = typeof result.content === 'string'
+    ? result.content
+    : JSON.stringify(result.content);
+  const patch = parseDraftPatchFromContent(content);
+  const rawFinishReason = result.response_metadata?.finish_reason
+    ?? result.response_metadata?.stop_reason;
+  const finishReason = typeof rawFinishReason === 'string' ? rawFinishReason : undefined;
+  const reasoningContentLength = getReasoningContentLength(result);
+  log.debug(
+    {
+      pluginId,
+      durationMs: Date.now() - start,
+      hasDraftPatch: !!patch,
+      finishReason,
+      contentLength: content.length,
+      reasoningContentLength,
+    },
+    'param extractor completed',
+  );
+  if (!patch && input.requireLlmResult) {
+    throw new Error(
+      'LLM_PARAM_EXTRACTOR_INVALID_OUTPUT: response was not a usable JSON draft patch; '
+      + `finishReason=${finishReason ?? 'unknown'}; contentLength=${content.length}; `
+      + `reasoningContentLength=${reasoningContentLength}`,
+    );
+  }
+  return patch;
 }

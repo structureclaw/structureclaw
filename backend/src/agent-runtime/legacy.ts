@@ -344,6 +344,21 @@ export function computeLegacyMissing(
 ): { critical: string[]; optional: string[] } {
   const allowed = new Set(allowedKeys);
   const critical = computeMissingCriticalKeys(state).filter((key) => allowed.has(key));
+  const invalidDraftFields = Array.isArray(state.skillState?.invalidDraftFields)
+    ? state.skillState.invalidDraftFields.filter((field): field is string => (
+      typeof field === 'string' && allowed.has(field)
+    ))
+    : [];
+  const issueFields = Array.isArray(state.draftIssues)
+    ? state.draftIssues
+      .map((issue) => issue.field)
+      .filter((field): field is string => typeof field === 'string' && field.trim().length > 0)
+    : [];
+  for (const field of [...invalidDraftFields, ...issueFields]) {
+    if (!critical.includes(field)) {
+      critical.push(field);
+    }
+  }
   if (phase === 'interactive') {
     critical.push(...computeMissingLoadDetailKeys(state).filter((key) => allowed.has(key) && !critical.includes(key)));
   }
@@ -354,8 +369,13 @@ export function buildLegacyLabels(keys: string[], locale: AppLocale): string[] {
   return mapMissingFieldLabels(keys, locale);
 }
 
-export function buildLegacyModel(state: DraftState): Record<string, unknown> | undefined {
-  const missing = computeMissingCriticalKeys(state);
+export function buildLegacyModel(
+  state: DraftState,
+  allowedKeys?: string[],
+): Record<string, unknown> | undefined {
+  const missing = allowedKeys
+    ? computeLegacyMissing(state, 'execution', allowedKeys).critical
+    : computeMissingCriticalKeys(state);
   if (missing.length > 0) {
     return undefined;
   }

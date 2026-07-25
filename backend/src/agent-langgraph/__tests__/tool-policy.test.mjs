@@ -1,6 +1,27 @@
 import { describe, expect, test } from "@jest/globals";
 
 describe("LangGraph tool policy", () => {
+  test("checkpointed tool policy overrides missing resume-request configuration", async () => {
+    const { applySessionToolAccessPolicy } = await import("../../../dist/agent-langgraph/graph.js");
+    const configurable = {
+      enabledToolIds: undefined,
+      disabledToolIds: undefined,
+      fileAccessAllowlist: undefined,
+    };
+
+    applySessionToolAccessPolicy(configurable, {
+      enabledToolIds: ["detect_structure_type", "ask_user_clarification"],
+      disabledToolIds: ["calculate"],
+      fileAccessAllowlist: [".uploads/case/input.dxf"],
+    });
+
+    expect(configurable).toMatchObject({
+      enabledToolIds: ["detect_structure_type", "ask_user_clarification"],
+      disabledToolIds: ["calculate"],
+      fileAccessAllowlist: [".uploads/case/input.dxf"],
+    });
+  });
+
   test("explicit empty enabledToolIds binds no tools", async () => {
     const { resolveActiveToolIds } = await import("../../../dist/agent-langgraph/tool-policy.js");
 

@@ -14,6 +14,12 @@ import type {
 } from '../agent-runtime/types.js';
 import type { AppLocale } from '../services/locale.js';
 
+export interface AgentToolAccessPolicy {
+  enabledToolIds: string[] | null;
+  disabledToolIds: string[] | null;
+  fileAccessAllowlist: string[] | null;
+}
+
 /** Per-session agent state persisted via the LangGraph checkpointer. */
 export interface AgentSessionState {
   /** Accumulated structural draft parameters. */
@@ -22,6 +28,8 @@ export interface AgentSessionState {
   artifacts: AgentArtifactState;
   /** Currently selected skill IDs (user-chosen or auto-detected). */
   selectedSkillIds: string[];
+  /** Tool and attachment access policy retained across clarification interrupts. */
+  toolAccessPolicy: AgentToolAccessPolicy;
   /** User locale (zh / en). */
   locale: AppLocale;
   /** Absolute path of the workspace root directory. */
@@ -44,6 +52,11 @@ export function emptySessionState(overrides?: Partial<AgentSessionState>): Agent
     draftState: null,
     artifacts: {},
     selectedSkillIds: [],
+    toolAccessPolicy: {
+      enabledToolIds: null,
+      disabledToolIds: null,
+      fileAccessAllowlist: null,
+    },
     locale: 'zh',
     workspaceRoot: '',
     policy: {},
@@ -78,6 +91,14 @@ export const AgentStateAnnotation = Annotation.Root({
   selectedSkillIds: Annotation<string[]>({
     reducer: (_prev, next) => next,
     default: () => [],
+  }),
+  toolAccessPolicy: Annotation<AgentToolAccessPolicy>({
+    reducer: (_prev, next) => next,
+    default: () => ({
+      enabledToolIds: null,
+      disabledToolIds: null,
+      fileAccessAllowlist: null,
+    }),
   }),
   locale: Annotation<AppLocale>({
     reducer: (_prev, next) => next,

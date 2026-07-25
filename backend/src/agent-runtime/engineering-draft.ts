@@ -8,6 +8,8 @@ import type {
   AgentAnalysisType,
   EngineeringDraft,
   EngineeringDraftLoad,
+  EngineeringDraftLoadCaseType,
+  EngineeringDraftLoadCombination,
   EngineeringDraftLoadDirection,
   EngineeringDraftLoadKind,
   EngineeringDraftLoadUnit,
@@ -52,6 +54,11 @@ function firstPositiveNumber(candidates: readonly unknown[]): number | undefined
 function positiveInteger(value: unknown): number | undefined {
   const parsed = positiveNumber(value);
   return parsed === undefined ? undefined : Math.max(1, Math.round(parsed));
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  const parsed = finiteNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
 }
 
 function positiveNumberArray(value: unknown): number[] | undefined {
@@ -216,11 +223,20 @@ function normalizeLoadDirection(value: unknown): EngineeringDraftLoadDirection |
   return undefined;
 }
 
+function normalizeLoadCaseType(value: unknown): EngineeringDraftLoadCaseType | undefined {
+  const raw = normalizeString(value)?.toLowerCase();
+  if (!raw) return undefined;
+  if (raw === 'dead' || raw === 'live' || raw === 'wind' || raw === 'seismic' || raw === 'other') {
+    return raw;
+  }
+  return undefined;
+}
+
 function normalizeLoadLocation(value: unknown): EngineeringDraftLoad['location'] | undefined {
   const raw = asRecord(value);
   if (!raw) return undefined;
   const location = {
-    xM: positiveNumber(raw.xM ?? raw.x ?? raw.positionM),
+    xM: nonNegativeNumber(raw.xM ?? raw.x ?? raw.positionM),
     spanIndex: positiveInteger(raw.spanIndex ?? raw.span),
     story: positiveInteger(raw.story ?? raw.storyIndex ?? raw.level),
     nodeRole: normalizeString(raw.nodeRole ?? raw.node),
@@ -246,7 +262,23 @@ function normalizeEngineeringLoad(value: unknown): EngineeringDraftLoad | undefi
     direction: normalizeLoadDirection(raw.direction ?? raw.axis),
     target: normalizeString(raw.target),
     location: normalizeLoadLocation(raw.location),
+    caseId: normalizeString(raw.caseId ?? raw.loadCaseId),
+    caseType: normalizeLoadCaseType(raw.caseType ?? raw.loadCaseType),
   };
+}
+
+function normalizeLoadCombination(value: unknown): EngineeringDraftLoadCombination | undefined {
+  const raw = asRecord(value);
+  const id = normalizeString(raw?.id);
+  const rawFactors = asRecord(raw?.factors);
+  if (!id || !rawFactors) return undefined;
+  const factors: Record<string, number> = {};
+  for (const [rawCaseId, rawFactor] of Object.entries(rawFactors)) {
+    const caseId = rawCaseId.trim();
+    const factor = finiteNumber(rawFactor);
+    if (caseId && factor !== undefined) factors[caseId] = factor;
+  }
+  return Object.keys(factors).length ? { id, factors } : undefined;
 }
 
 function normalizeMezzanineHeight(rawGeometry: Record<string, unknown>): number | undefined {
@@ -276,6 +308,24 @@ function normalizeMezzanineHeight(rawGeometry: Record<string, unknown>): number 
   ]);
 }
 
+function normalizeMezzanineLength(rawGeometry: Record<string, unknown>): number | undefined {
+  const direct = firstPositiveNumber([
+    rawGeometry.mezzanineLengthM,
+    rawGeometry.mezzanineLength,
+    rawGeometry.platformLengthM,
+  ]);
+  if (direct !== undefined) return direct;
+
+  const mezzanine = asRecord(rawGeometry.mezzanine);
+  const platform = asRecord(rawGeometry.platform);
+  return firstPositiveNumber([
+    mezzanine?.lengthM,
+    mezzanine?.length,
+    platform?.lengthM,
+    platform?.length,
+  ]);
+}
+
 export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | undefined {
   const raw = asRecord(value);
   if (!raw) return undefined;
@@ -285,6 +335,7 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
     lengthM: positiveNumber(rawGeometry.lengthM),
     heightM: positiveNumber(rawGeometry.heightM),
     mezzanineHeightM: normalizeMezzanineHeight(rawGeometry),
+    mezzanineLengthM: normalizeMezzanineLength(rawGeometry),
     spanLengthsM: positiveNumberArray(rawGeometry.spanLengthsM),
     storyHeightsM: positiveNumberArray(rawGeometry.storyHeightsM),
     bayWidthsM: positiveNumberArray(rawGeometry.bayWidthsM),
@@ -321,6 +372,11 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
   const analysis = rawAnalysis ? {
     type: normalizeAnalysisType(rawAnalysis.type),
     engineTarget: normalizeEngineTarget(rawAnalysis.engineTarget),
+    loadCombinations: Array.isArray(rawAnalysis.loadCombinations)
+      ? rawAnalysis.loadCombinations
+        .map(normalizeLoadCombination)
+        .filter((combination): combination is EngineeringDraftLoadCombination => combination !== undefined)
+      : undefined,
   } : undefined;
 
   const wind = normalizeWindParams(raw.wind ?? raw.windParams);
@@ -344,22 +400,39 @@ export function mergeEngineeringDraft(
   existing: EngineeringDraft | undefined,
   patch: EngineeringDraft | undefined,
 ): EngineeringDraft | undefined {
-  if (!existing) return patch;
+  if (!existing && !patch) return undefined;
   if (!patch) return existing;
+  if (!existing) {
+    return {
+      ...patch,
+      loads: mergeEngineeringDraftLoads(undefined, patch.loads, {
+        structureType: patch.structureType,
+        geometry: patch.geometry,
+        analysis: patch.analysis,
+      }),
+    };
+  }
+  const structureType = patch.structureType ?? existing.structureType;
+  const geometry = { ...(existing.geometry ?? {}), ...(patch.geometry ?? {}) };
+  const analysis = { ...(existing.analysis ?? {}), ...(patch.analysis ?? {}) };
   const wind = existing.wind || patch.wind
     ? { ...(existing.wind ?? {}), ...(patch.wind ?? {}) }
     : undefined;
-  const loads = mergeEngineeringDraftLoads(existing.loads, patch.loads);
+  const loads = mergeEngineeringDraftLoads(existing.loads, patch.loads, {
+    structureType,
+    geometry,
+    analysis,
+  });
   return {
-    structureType: patch.structureType ?? existing.structureType,
-    geometry: { ...(existing.geometry ?? {}), ...(patch.geometry ?? {}) },
+    structureType,
+    geometry,
     topology: { ...(existing.topology ?? {}), ...(patch.topology ?? {}) },
     material: { ...(existing.material ?? {}), ...(patch.material ?? {}) },
     sections: { ...(existing.sections ?? {}), ...(patch.sections ?? {}) },
     boundary: { ...(existing.boundary ?? {}), ...(patch.boundary ?? {}) },
     loads,
     wind,
-    analysis: { ...(existing.analysis ?? {}), ...(patch.analysis ?? {}) },
+    analysis,
   };
 }
 
@@ -375,28 +448,79 @@ function stableJson(value: unknown): string {
   }, {}));
 }
 
-function engineeringLoadMergeKey(load: EngineeringDraftLoad): string {
+function isSingleSpanBeam(draft: Pick<EngineeringDraft, 'structureType' | 'geometry'>): boolean {
+  if (draft.structureType !== 'beam') return false;
+  const spans = draft.geometry?.spanLengthsM;
+  return !spans?.length || spans.length === 1;
+}
+
+function loadLocationMergeValue(
+  load: EngineeringDraftLoad,
+  draft: Pick<EngineeringDraft, 'structureType' | 'geometry'>,
+): EngineeringDraftLoad['location'] {
+  const location = load.location;
+  const isDistributed = load.kind === 'line'
+    || load.kind === 'distributed'
+    || load.unit === 'kN/m';
+  if (!location || !isDistributed || !isSingleSpanBeam(draft) || location.spanIndex !== 1) {
+    return location;
+  }
+  const { spanIndex: _spanIndex, ...rest } = location;
+  return Object.values(rest).some((value) => value !== undefined) ? rest : undefined;
+}
+
+function engineeringLoadMergeKey(
+  load: EngineeringDraftLoad,
+  draft: Pick<EngineeringDraft, 'structureType' | 'geometry' | 'analysis'>,
+): string {
+  const location = loadLocationMergeValue(load, draft);
+  const hasStructuredPointLocation = isPointLikeLoad(load)
+    && Boolean(
+      location?.nodeRole
+      || location?.xM !== undefined
+      || location?.story !== undefined,
+    );
+  const hasPlanarLineLocation = isLineLoad(load)
+    && Boolean(location)
+    && !(draft.geometry?.bayWidthsYM?.length);
+  const normalizedTarget = hasStructuredPointLocation || hasPlanarLineLocation
+    ? ''
+    : load.target?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+  const caseIds = new Set(
+    draft.analysis?.loadCombinations
+      ?.flatMap((combination) => Object.keys(combination.factors)) ?? [],
+  );
+  const soleCaseId = caseIds.size === 1 ? Array.from(caseIds)[0] : undefined;
+  const caseKey = load.caseId?.trim().toLowerCase()
+    ?? soleCaseId?.trim().toLowerCase()
+    ?? load.caseType
+    ?? '';
   return [
-    load.kind,
+    isLineLoad(load) ? 'line' : isPointLikeLoad(load) ? 'point' : load.kind,
     load.unit,
     load.direction ?? '',
-    load.target ?? '',
-    stableJson(load.location),
+    caseKey,
+    normalizedTarget,
+    stableJson(location),
   ].join('|');
 }
 
 function mergeEngineeringDraftLoads(
   existing: EngineeringDraftLoad[] | undefined,
   patch: EngineeringDraftLoad[] | undefined,
+  draft: Pick<EngineeringDraft, 'structureType' | 'geometry' | 'analysis'>,
 ): EngineeringDraftLoad[] | undefined {
-  if (!existing?.length) return patch?.length ? patch : undefined;
-  if (!patch?.length) return existing;
+  if (!existing?.length && !patch?.length) return undefined;
   const merged = new Map<string, EngineeringDraftLoad>();
-  for (const load of existing) {
-    merged.set(engineeringLoadMergeKey(load), load);
+  for (const load of existing ?? []) {
+    merged.set(engineeringLoadMergeKey(load, draft), load);
   }
-  for (const load of patch) {
-    merged.set(engineeringLoadMergeKey(load), load);
+  for (const load of patch ?? []) {
+    const key = engineeringLoadMergeKey(load, draft);
+    const prior = merged.get(key);
+    merged.set(key, prior && load.location === undefined
+      ? { ...prior, ...load, location: prior.location }
+      : load);
   }
   return Array.from(merged.values());
 }
@@ -493,6 +617,18 @@ function isTopStoryTarget(target: string): boolean {
     || trimmed === '顶';
 }
 
+export function isLocalizedFramePointLoad(load: EngineeringDraftLoad): boolean {
+  if (!isPointLikeLoad(load)) return false;
+  return load.location?.story !== undefined && Boolean(load.location.nodeRole?.trim());
+}
+
+export function hasIncompleteFramePointLoadLocation(load: EngineeringDraftLoad): boolean {
+  if (!isPointLikeLoad(load)) return false;
+  const hasStory = load.location?.story !== undefined;
+  const hasNodeRole = Boolean(load.location?.nodeRole?.trim());
+  return hasStory !== hasNodeRole;
+}
+
 function parseStoryOrdinal(target: string | undefined, storyCount: number): number | undefined {
   if (!target) return undefined;
   const text = target.toLowerCase();
@@ -536,6 +672,19 @@ function parseStoryOrdinal(target: string | undefined, storyCount: number): numb
     parsed = table[raw];
   }
   return parsed !== undefined && parsed >= 1 && parsed <= storyCount ? parsed : undefined;
+}
+
+function resolveFrameLoadStory(load: EngineeringDraftLoad, storyCount: number): number | undefined {
+  const locationStory = load.location?.story;
+  if (
+    typeof locationStory === 'number'
+    && Number.isInteger(locationStory)
+    && locationStory >= 1
+    && locationStory <= storyCount
+  ) {
+    return locationStory;
+  }
+  return parseStoryOrdinal(load.target, storyCount);
 }
 
 function hasFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): boolean {
@@ -634,9 +783,8 @@ function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtra
       item.totalKN !== undefined
       && Number.isFinite(item.totalKN)
       && item.totalKN > 0
-      && !(isPointLikeLoad(item.load)
-        && item.load.location?.story !== undefined
-        && item.load.location.nodeRole !== undefined)
+      && !isLocalizedFramePointLoad(item.load)
+      && !hasIncompleteFramePointLoadLocation(item.load)
     ));
 
   const comparableLoads: ConvertibleFrameLoad[] = convertibleLoads.filter((item) => (
@@ -650,13 +798,13 @@ function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtra
   for (const { load, index, totalKN } of comparableLoads) {
     const field = frameFloorLoadField(load);
     let stories: number[];
-    const explicitStory = parseStoryOrdinal(load.target, storyCount);
+    const explicitStory = resolveFrameLoadStory(load, storyCount);
     if (explicitStory !== undefined) {
       stories = [explicitStory];
     } else {
       const sameFieldUntargetedLoads: ConvertibleFrameLoad[] = comparableLoads.filter((item) => (
         frameFloorLoadField(item.load) === field
-        && parseStoryOrdinal(item.load.target, storyCount) === undefined
+        && resolveFrameLoadStory(item.load, storyCount) === undefined
       ));
       const untargetedIndex = sameFieldUntargetedLoads.findIndex((item) => item.index === index);
       if (sameFieldUntargetedLoads.length > 1) {
@@ -861,6 +1009,9 @@ export function projectEngineeringDraftToLegacyPatch(
     }
     if (engineeringDraft.geometry?.mezzanineHeightM !== undefined) {
       skillState.mezzanineHeightM = engineeringDraft.geometry.mezzanineHeightM;
+    }
+    if (engineeringDraft.geometry?.mezzanineLengthM !== undefined) {
+      skillState.mezzanineLengthM = engineeringDraft.geometry.mezzanineLengthM;
     }
     const mezzanineLoad = loads.find((load) => (
       isLineLoad(load)

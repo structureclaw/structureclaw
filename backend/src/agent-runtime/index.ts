@@ -1,5 +1,5 @@
 import type { AppLocale } from '../services/locale.js';
-import type { StructureClawChatModel } from '../utils/llm.js';
+import type { LlmTokenUsage, StructureClawChatModel } from '../utils/llm.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   buildCodeCheckInput,
@@ -388,6 +388,7 @@ export class AgentSkillRuntime {
   async executeReportSkill(options: {
     message: string;
     analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    normalizedModel?: unknown;
     analysis: unknown;
     codeCheck?: unknown;
     format: 'json' | 'markdown' | 'both';
@@ -411,7 +412,7 @@ export class AgentSkillRuntime {
       visualizationHints,
     } = buildReportDomainArtifacts({
       designBasis: undefined,
-      normalizedModel: undefined,
+      normalizedModel: options.normalizedModel,
       postprocessedResult: options.analysis,
       codeCheckResult: options.codeCheck,
     });
@@ -424,6 +425,7 @@ export class AgentSkillRuntime {
       clauseTraceability,
       controllingCases,
       visualizationHints,
+      normalizedModel: options.normalizedModel,
       analysis: options.analysis,
       codeCheck: options.codeCheck,
       generatedAt: new Date().toISOString(),
@@ -479,11 +481,18 @@ export class AgentSkillRuntime {
     currentState?: DraftState,
     skillIds?: string[],
     signal?: AbortSignal,
+    onUsage?: (usage: LlmTokenUsage) => void,
   ): Promise<StructuralTypeMatch> {
     const routerLlm = requireStructuralRouterLlm(llm, locale);
 
-    const ruleMatch = await this.registry.detectStructuralType(message, locale, undefined, skillIds);
-    if (ruleMatch.supportLevel === 'unsupported' && ruleMatch.key !== 'unknown') {
+    const benchmarkLlmOnly = process.env.SCLAW_BENCHMARK_LLM_ONLY === '1';
+    const ruleMatch = benchmarkLlmOnly
+      ? undefined
+      : await this.registry.detectStructuralType(message, locale, undefined, skillIds);
+    if (
+      ruleMatch?.supportLevel === 'unsupported'
+      && ruleMatch.key !== 'unknown'
+    ) {
       return ruleMatch;
     }
 
@@ -498,13 +507,17 @@ export class AgentSkillRuntime {
       plugins,
       ruleMatch,
       signal,
+      onUsage,
     });
     if (llmMatch) {
       return llmMatch;
     }
 
     // Fallback is allowed only after an available LLM failed to produce a usable routing decision.
-    return ruleMatch;
+    if (ruleMatch) {
+      return ruleMatch;
+    }
+    throw new Error('LLM_STRUCTURAL_ROUTER_INVALID_OUTPUT: response did not contain a usable routing decision');
   }
 
   async resolvePluginForType(skillId: string, skillIds?: string[]): Promise<AgentSkillPlugin | null> {
@@ -595,6 +608,11 @@ export class AgentSkillRuntime {
   ): Promise<Record<string, unknown> | undefined> {
     const plugin = await this.registry.resolvePluginForState(state, skillIds);
     if (!plugin) {
+      return undefined;
+    }
+
+    const missing = plugin.handler.computeMissing(state, 'execution');
+    if (missing.critical.length > 0) {
       return undefined;
     }
 

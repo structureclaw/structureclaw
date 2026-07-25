@@ -50,8 +50,14 @@ export class AgentSkillExecutor {
         ? '如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力。'
         : 'If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads.',
       input.locale === 'zh'
-        ? '如果用户明确给出非正几何尺寸、非正荷载大小、语义矛盾或需要工程判断的异常值，不要把该值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields。'
-        : 'If the user gives non-positive geometry dimensions, non-positive load magnitudes, semantic conflicts, or values that need engineering judgment, do not write that value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields.',
+        ? '框架局部点荷载/节点荷载必须结构化输出 location.story 和 location.nodeRole；用户未指定唯一节点时，应输出结构化 draftIssue，不得自行选择节点。'
+        : 'Localized frame point/nodal loads must include structured location.story and location.nodeRole; if the user does not identify a unique joint, emit a structured draftIssue instead of choosing one.',
+      input.locale === 'zh'
+        ? '如果用户给出数学上无效的几何尺寸、荷载符号/单位/位置含义不明确，或要求彼此矛盾，不要把相关值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields。数值仅仅非常规或很大/很小并不自动构成无效输入。'
+        : 'If geometry is mathematically invalid, a load sign/unit/location is ambiguous, or requirements contradict one another, do not write the affected value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields. An unusual, large, or small value is not invalid by magnitude alone.',
+      input.locale === 'zh'
+        ? '不得补写用户未提供的荷载单位或荷载种类；若荷载数值没有单位，或“楼面荷载”等表述无法区分总力、线荷载或面荷载，必须省略该荷载，输出 draftIssues 和 skillState.invalidDraftFields，并要求确认单位和荷载种类。'
+        : 'Never supply a load unit or load kind that the user did not provide; if a load magnitude has no unit, or wording such as "floor load" does not distinguish total force, line load, or area load, omit that load, output draftIssues and skillState.invalidDraftFields, and ask the user to confirm the unit and load kind.',
       input.locale === 'zh'
         ? 'loadPositionM 表示距左端位置（m）；若用户明确“4m处”这类位置，优先输出数值。'
         : 'loadPositionM means offset from left end in meters; if user specifies locations like 4m, provide numeric value.',
@@ -61,6 +67,9 @@ export class AgentSkillExecutor {
       input.locale === 'zh'
         ? '重要：当 Known draft state 已有参数值时，draftPatch 中必须保留所有已提取的工程参数（如长度、荷载、材料等），并补充新提取的值。不要回显元数据字段（如 updatedAt、skillId、structuralTypeKey）。'
         : 'CRITICAL: When Known draft state contains values, you MUST preserve all previously extracted *parameter* fields in draftPatch along with any newly extracted values. Do not echo metadata fields (updatedAt, skillId, structuralTypeKey, etc.).',
+      input.locale === 'zh'
+        ? '当用户修改、替换或把已有荷载“增加到/减小到”一个新值时，旧荷载值已被新值取代：只输出更新后的物理荷载，并保持原作用位置、方向和荷载工况，不要同时保留新旧两个荷载。单次输入中，同一物理荷载也只能在 engineeringDraft.loads 中表达一次；已折算为线荷载时不要再输出源面荷载或重复 legacy floorLoads。'
+        : 'When the user changes, replaces, or sets an existing load to a new increased/decreased value, the new value supersedes the old one: output only the updated physical load while preserving its location, direction, and load case; never retain both old and new loads. In one input, represent each physical load exactly once in engineeringDraft.loads; when an area load has already been converted to an applied line load, do not also output the source area load or duplicate legacy floorLoads.',
       input.locale === 'zh'
         ? '只有同时考虑当前消息和 Known draft state 后仍然未知的字段，才能放入 missingCritical。'
         : 'Only add fields to missingCritical if they are genuinely unknown after considering BOTH the current message AND the Known draft state.',

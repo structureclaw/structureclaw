@@ -83,6 +83,8 @@ describe('file-tools helpers', () => {
       const result = parseDxf(dxf);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0]).toEqual({ x1: 1, y1: 2, z1: 5, x2: 3, y2: 4, z2: 6, layer: 'STRUCTURE' });
+      expect(result.lineEntityCount).toBe(1);
+      expect(result.textEntityCount).toBe(0);
       expect(result.insertionUnits).toEqual({ code: 4, name: 'millimeters', metersPerUnit: 0.001 });
     });
 
@@ -98,6 +100,7 @@ describe('file-tools helpers', () => {
       const result = parseDxf(dxf);
       expect(result.entityCount).toBeGreaterThanOrEqual(2);
       expect(result.texts).toEqual(['Hello World', 'Beam Label']);
+      expect(result.textEntityCount).toBe(2);
     });
 
     test('rejects malformed LINE coordinates instead of emitting non-finite or invented points', async () => {
@@ -122,6 +125,8 @@ describe('file-tools helpers', () => {
       expect(result.entityCount).toBe(0);
       expect(result.lines).toEqual([]);
       expect(result.texts).toEqual([]);
+      expect(result.lineEntityCount).toBe(0);
+      expect(result.textEntityCount).toBe(0);
       expect(result.invalidLineCount).toBe(0);
       expect(result.insertionUnits).toBeNull();
     });
@@ -252,6 +257,29 @@ describe('createAnalyzeFileTool', () => {
     expect(result.note.toLowerCase()).not.toMatch(/\b(beams?|columns?)\b/);
   });
 
+  test('does not silently discard DXF topology after the first 50 line entities', async () => {
+    const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const dxfPath = path.join(uploadsDir, 'drawing-many-lines.dxf');
+    const entities = Array.from({ length: 75 }, (_, index) => [
+      '0', 'LINE',
+      '8', index < 70 ? 'ARCH' : 'STRUCT',
+      '10', String(index), '20', '0',
+      '11', String(index + 1), '21', '0',
+    ]).flat();
+    await fs.writeFile(dxfPath, [...entities, '0', 'EOF'].join('\n'), 'utf8');
+    const tool = createAnalyzeFileTool();
+    const raw = await tool.invoke(
+      { filePath: dxfPath },
+      { configurable: { workspaceRoot: tmpDir } },
+    );
+    const result = JSON.parse(raw);
+
+    expect(result.lineCount).toBe(75);
+    expect(result.lines).toHaveLength(75);
+    expect(result.linesTruncated).toBe(false);
+    expect(result.lines.slice(-5).every((line) => line.layer === 'STRUCT')).toBe(true);
+  });
+
   test('rejects path traversal', async () => {
     const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
     const tool = createAnalyzeFileTool();
@@ -262,6 +290,28 @@ describe('createAnalyzeFileTool', () => {
     const result = JSON.parse(raw);
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/traversal|denied/);
+  });
+
+  test('restricted runs can read only their explicitly supplied attachments', async () => {
+    const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const allowedPath = path.join(uploadsDir, 'drawing.dxf');
+    const workspaceSecret = path.join(tmpDir, 'ground-truth.json');
+    await fs.writeFile(allowedPath, ['0', 'EOF'].join('\n'), 'utf8');
+    await fs.writeFile(workspaceSecret, '{"answer":42}', 'utf8');
+    const tool = createAnalyzeFileTool();
+    const config = {
+      configurable: {
+        workspaceRoot: tmpDir,
+        fileAccessAllowlist: [allowedPath],
+      },
+    };
+
+    const allowed = JSON.parse(await tool.invoke({ filePath: allowedPath }, config));
+    const denied = JSON.parse(await tool.invoke({ filePath: workspaceSecret }, config));
+
+    expect(allowed.success).toBe(true);
+    expect(denied.success).toBe(false);
+    expect(denied.error).toMatch(/restricted to the attachments/);
   });
 
   test('returns FILE_NOT_FOUND for missing file', async () => {

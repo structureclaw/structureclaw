@@ -132,7 +132,9 @@ export function computeMissingCriticalKeys(state: DraftState): string[] {
   if (state.loadKN === undefined) {
     missing.push('loadKN');
   }
-  pushInvalidDraftFields(missing, state, ['lengthM', 'spanLengthM', 'heightM', 'loadKN']);
+  pushInvalidDraftFields(missing, state, state.inferredType === 'beam'
+    ? ['lengthM', 'spanLengthM', 'heightM', 'loadKN', 'loadPosition']
+    : ['lengthM', 'spanLengthM', 'heightM', 'loadKN']);
   return missing;
 }
 

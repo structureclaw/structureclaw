@@ -87,6 +87,93 @@ describe('LLM model options', () => {
     expect(options.configuration.baseURL).toBe('https://example.com/v1');
   });
 
+  test('passes an explicit output token limit to OpenAI-compatible models', async () => {
+    const { buildChatModelOptions } = await import('../../../dist/utils/llm.js');
+
+    const options = buildChatModelOptions(baseConfig, 0, { maxTokens: 16384 });
+
+    expect(options.maxTokens).toBe(16384);
+  });
+
+  test('uses a fixed output limit only for benchmark model calls', async () => {
+    const previousBenchmarkMode = process.env.SCLAW_BENCHMARK_LLM_ONLY;
+    const previousMaxTokens = process.env.SCLAW_BENCHMARK_MAX_TOKENS;
+    try {
+      const { resolveBenchmarkMaxTokens } = await import('../../../dist/utils/llm.js');
+
+      process.env.SCLAW_BENCHMARK_LLM_ONLY = '1';
+      delete process.env.SCLAW_BENCHMARK_MAX_TOKENS;
+      expect(resolveBenchmarkMaxTokens()).toBe(16384);
+      process.env.SCLAW_BENCHMARK_MAX_TOKENS = '8192';
+      expect(resolveBenchmarkMaxTokens()).toBe(8192);
+      delete process.env.SCLAW_BENCHMARK_LLM_ONLY;
+      expect(resolveBenchmarkMaxTokens()).toBeUndefined();
+    } finally {
+      if (previousBenchmarkMode === undefined) {
+        delete process.env.SCLAW_BENCHMARK_LLM_ONLY;
+      } else {
+        process.env.SCLAW_BENCHMARK_LLM_ONLY = previousBenchmarkMode;
+      }
+      if (previousMaxTokens === undefined) {
+        delete process.env.SCLAW_BENCHMARK_MAX_TOKENS;
+      } else {
+        process.env.SCLAW_BENCHMARK_MAX_TOKENS = previousMaxTokens;
+      }
+    }
+  });
+
+  test('normalizes and combines provider token usage for nested benchmark calls', async () => {
+    const {
+      extractLlmTokenUsage,
+      mergeLlmTokenUsage,
+    } = await import('../../../dist/utils/llm.js');
+
+    expect(extractLlmTokenUsage({
+      usage_metadata: {
+        input_tokens: 120,
+        output_tokens: 30,
+        total_tokens: 150,
+      },
+    })).toEqual({
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+    });
+    expect(extractLlmTokenUsage({
+      response_metadata: {
+        tokenUsage: {
+          promptTokens: 80,
+          completionTokens: 20,
+        },
+      },
+    })).toEqual({
+      inputTokens: 80,
+      outputTokens: 20,
+      totalTokens: 100,
+    });
+    expect(mergeLlmTokenUsage([
+      { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+      { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+    ])).toEqual({
+      inputTokens: 200,
+      outputTokens: 50,
+      totalTokens: 250,
+    });
+  });
+
+  test('measures reasoning content for diagnostics without treating it as final content', async () => {
+    const { getReasoningContentLength } = await import('../../../dist/utils/llm.js');
+
+    expect(getReasoningContentLength({
+      content: '',
+      additional_kwargs: { reasoning_content: 'reasoning only' },
+    })).toBe(14);
+    expect(getReasoningContentLength({
+      content: '{"answer":true}',
+      additional_kwargs: {},
+    })).toBe(0);
+  });
+
   test('resolves Anthropic provider from explicit env or native base URL', async () => {
     const previous = process.env.LLM_PROVIDER;
     try {
@@ -149,7 +236,7 @@ describe('LLM model options', () => {
       ...baseConfig,
       llmModel: 'claude-opus-4-8',
       llmBaseUrl: 'https://api.anthropic.com/v1',
-    }, 0, { disableStreaming: true });
+    }, 0, { disableStreaming: true, maxTokens: 8192 });
 
     expect(normalizeAnthropicBaseUrl('https://api.anthropic.com/v1')).toBe('https://api.anthropic.com');
     expect(normalizeAnthropicBaseUrl('https://api.aicodemirror.com/api/claudecode/v1'))
@@ -158,6 +245,7 @@ describe('LLM model options', () => {
       model: 'claude-opus-4-8',
       apiKey: 'test-key',
       maxRetries: 1,
+      maxTokens: 8192,
       disableStreaming: true,
       streaming: false,
       anthropicApiUrl: 'https://api.anthropic.com',

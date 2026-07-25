@@ -1139,6 +1139,54 @@ function renderControllingCasesMarkdown(
   ];
 }
 
+function renderControlNodeDisplacementMarkdown(input: SkillReportNarrativeInput): string[] {
+  const data = analysisData(input);
+  const displacements = asRecord(data['displacements']);
+  const envelope = asRecord(data['envelope']);
+  const summary = asRecord(data['summary']);
+  const controlNodeId = String(
+    input.controllingCases['controlNodeDisplacement']
+      ?? envelope['controlNodeDisplacement']
+      ?? summary['maxDisplacementNode']
+      ?? '',
+  ).trim();
+  if (!controlNodeId) {
+    return [];
+  }
+
+  const response = asRecord(displacements[controlNodeId]);
+  const components = ['ux', 'uy', 'uz']
+    .filter((key) => typeof response[key] === 'number' && Number.isFinite(response[key]))
+    .map((key) => `${key}=${String(response[key])}`);
+  if (components.length === 0) {
+    return [];
+  }
+
+  const model = asRecord(input.normalizedModel);
+  const nodes = Array.isArray(model['nodes']) ? model['nodes'].map(asRecord) : [];
+  const controlNode = nodes.find((node) => String(node['id'] ?? '') === controlNodeId);
+  const coordinates = controlNode
+    ? ['x', 'y', 'z']
+      .filter((key) => typeof controlNode[key] === 'number' && Number.isFinite(controlNode[key]))
+      .map((key) => `${key}=${String(controlNode[key])}`)
+    : [];
+  const meta = asRecord(data['meta']);
+  const units = asRecord(meta['units']);
+  const unit = String(units['displacement'] ?? '').trim();
+  const coordinateText = coordinates.length > 0
+    ? localize(input.locale, `，全局坐标 (${coordinates.join(', ')})`, ` at global coordinates (${coordinates.join(', ')})`)
+    : '';
+  const unitText = unit ? ` ${unit}` : '';
+
+  return [
+    localize(
+      input.locale,
+      `- 控制节点位移响应: 节点 ${controlNodeId}${coordinateText}，${components.join(', ')}${unitText}`,
+      `- Control-node displacement response: node ${controlNodeId}${coordinateText}, ${components.join(', ')}${unitText}`,
+    ),
+  ];
+}
+
 export function buildDefaultReportNarrative(input: SkillReportNarrativeInput): string {
   const { locale, message, analysisType, analysisSuccess, codeCheckText, summary, keyMetrics, clauseTraceability, controllingCases } = input;
 
@@ -1161,6 +1209,7 @@ export function buildDefaultReportNarrative(input: SkillReportNarrativeInput): s
     '',
     localize(locale, '## 关键指标', '## Key Metrics'),
     localize(locale, `- 最大位移: ${String(keyMetrics.maxAbsDisplacement ?? 'N/A')}`, `- Max displacement: ${String(keyMetrics.maxAbsDisplacement ?? 'N/A')}`),
+    ...renderControlNodeDisplacementMarkdown(input),
     localize(locale, `- 最大轴力: ${String(keyMetrics.maxAbsAxialForce ?? 'N/A')}`, `- Max axial force: ${String(keyMetrics.maxAbsAxialForce ?? 'N/A')}`),
     localize(locale, `- 最大剪力: ${String(keyMetrics.maxAbsShearForce ?? 'N/A')}`, `- Max shear force: ${String(keyMetrics.maxAbsShearForce ?? 'N/A')}`),
     localize(locale, `- 最大弯矩: ${String(keyMetrics.maxAbsMoment ?? 'N/A')}`, `- Max moment: ${String(keyMetrics.maxAbsMoment ?? 'N/A')}`),

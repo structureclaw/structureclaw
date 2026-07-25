@@ -6,6 +6,28 @@ import path from 'node:path';
 jest.setTimeout(20000);
 
 describe('attachment context', () => {
+  test('persists tool and attachment access policy for interrupted runs', async () => {
+    const { buildToolAccessPolicy } = await import('../../../dist/agent-langgraph/agent-service.js');
+    const context = {
+      enabledToolIds: ['analyze_file', 'ask_user_clarification'],
+      disabledToolIds: ['read_file'],
+      restrictFileAccessToAttachments: true,
+      attachments: [
+        { fileId: 'f1', originalName: 'frame.dxf', relPath: '.uploads/case/frame.dxf' },
+      ],
+    };
+
+    const policy = buildToolAccessPolicy(context);
+    context.enabledToolIds.push('read_file');
+    context.attachments[0].relPath = '.uploads/case/changed.dxf';
+
+    expect(policy).toEqual({
+      enabledToolIds: ['analyze_file', 'ask_user_clarification'],
+      disabledToolIds: ['read_file'],
+      fileAccessAllowlist: ['.uploads/case/frame.dxf'],
+    });
+  });
+
   let tmpDir;
   let previousEnv;
 

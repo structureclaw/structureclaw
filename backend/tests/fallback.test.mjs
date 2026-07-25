@@ -813,10 +813,10 @@ describe('buildInteractionQuestions', () => {
     expect(questions[0].question).toContain('portal-frame');
   });
 
-  it('should use double-span-beam-specific load type question', () => {
+  it('should use continuous-beam-specific load type question', () => {
     const dsDraft = { ...baseDraft, inferredType: 'double-span-beam' };
     const questions = buildInteractionQuestions(['loadType'], ['loadType'], dsDraft, 'en');
-    expect(questions[0].question).toContain('double-span');
+    expect(questions[0].question).toContain('continuous-beam');
   });
 
   it('should use truss-specific load type question', () => {
@@ -837,10 +837,10 @@ describe('buildInteractionQuestions', () => {
     expect(questions[0].question).toContain('top nodes');
   });
 
-  it('should use double-span-beam-specific load position question', () => {
+  it('should use continuous-beam-specific load position question', () => {
     const dsDraft = { ...baseDraft, inferredType: 'double-span-beam' };
     const questions = buildInteractionQuestions(['loadPosition'], ['loadPosition'], dsDraft, 'en');
-    expect(questions[0].question).toContain('middle joint');
+    expect(questions[0].question).toContain('specified spans');
   });
 
   it('should use truss-specific load position question', () => {

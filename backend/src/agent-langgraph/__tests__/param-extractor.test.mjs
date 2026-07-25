@@ -16,6 +16,110 @@ const beamPlugin = {
 };
 
 describe("param extractor", () => {
+  test("benchmark LLM-only mode rejects provider failures instead of using deterministic extraction", async () => {
+    const { invokeParamExtractor } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    await expect(invokeParamExtractor({
+      message: "A two-story frame uses Q355 steel.",
+      existingState: undefined,
+      locale: "en",
+      plugin: beamPlugin,
+      requireLlmResult: true,
+      llm: {
+        invoke: async () => {
+          throw new Error("terminated");
+        },
+      },
+    })).rejects.toThrow("LLM_PARAM_EXTRACTOR_INFRASTRUCTURE_ERROR");
+  });
+
+  test("benchmark LLM-only mode counts unusable extraction output as a model failure", async () => {
+    const { invokeParamExtractor } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    await expect(invokeParamExtractor({
+      message: "A simply supported beam spans 6 m.",
+      existingState: undefined,
+      locale: "en",
+      plugin: beamPlugin,
+      requireLlmResult: true,
+      llm: {
+        invoke: async () => ({ content: "I cannot provide JSON." }),
+      },
+    })).rejects.toThrow("LLM_PARAM_EXTRACTOR_INVALID_OUTPUT");
+  });
+
+  test("reports provider finish reason and response length for unusable output", async () => {
+    const { invokeParamExtractor } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    await expect(invokeParamExtractor({
+      message: "A three-dimensional frame has several stories and bays.",
+      existingState: undefined,
+      locale: "en",
+      plugin: beamPlugin,
+      requireLlmResult: true,
+      llm: {
+        invoke: async () => ({
+          content: '{"draftPatch":{"storyCount":3',
+          response_metadata: { finish_reason: "length" },
+          additional_kwargs: { reasoning_content: "reasoning only" },
+        }),
+      },
+    })).rejects.toThrow(
+      "finishReason=length; contentLength=29; reasoningContentLength=14",
+    );
+  });
+
+  test("passes the enclosing abort signal to the extraction LLM", async () => {
+    const { invokeParamExtractor } = await import("../../../dist/agent-langgraph/param-extractor.js");
+    const controller = new AbortController();
+    let receivedSignal;
+
+    await invokeParamExtractor({
+      message: "A simply supported beam spans 6 m.",
+      existingState: undefined,
+      locale: "en",
+      plugin: beamPlugin,
+      signal: controller.signal,
+      llm: {
+        invoke: async (_prompt, options) => {
+          receivedSignal = options?.signal;
+          return { content: '{"lengthM":6}' };
+        },
+      },
+    });
+
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
+  test("reports provider token usage from the nested extraction call", async () => {
+    const { invokeParamExtractor } = await import("../../../dist/agent-langgraph/param-extractor.js");
+    const usages = [];
+
+    await invokeParamExtractor({
+      message: "A simply supported beam spans 6 m.",
+      existingState: undefined,
+      locale: "en",
+      plugin: beamPlugin,
+      onUsage: (usage) => usages.push(usage),
+      llm: {
+        invoke: async () => ({
+          content: '{"lengthM":6}',
+          usage_metadata: {
+            input_tokens: 90,
+            output_tokens: 10,
+            total_tokens: 100,
+          },
+        }),
+      },
+    });
+
+    expect(usages).toEqual([{
+      inputTokens: 90,
+      outputTokens: 10,
+      totalTokens: 100,
+    }]);
+  });
+
   test("builds one direct prompt with embedded skill guidance", async () => {
     const { buildParamExtractorPrompt } = await import("../../../dist/agent-langgraph/param-extractor.js");
 
@@ -31,7 +135,32 @@ describe("param extractor", () => {
     expect(prompt).toContain("已有 draftState");
     expect(prompt).toContain("\"lengthM\": 6");
     expect(prompt).toContain("简支梁，跨度20m，均布荷载10kN/m");
+    expect(prompt).toContain("restraints 顺序严格为 [ux,uy,uz,rx,ry,rz]");
+    expect(prompt).toContain("沿全局 X 向可滑动的滚动支座为 [false,true,true,false,false,false]");
+    expect(prompt).toContain("不得补写用户未提供的荷载单位或荷载种类");
+    expect(prompt).toContain("无法区分总力、线荷载或面荷载");
+    expect(prompt).toContain("源面荷载及其按受荷宽度折算得到的线荷载不是两个独立荷载");
+    expect(prompt).toContain('"factors": { "<loadCaseId>": number }');
     expect(prompt).not.toContain("get_skill_parameter_info");
+  });
+
+  test("defines the canonical support restraints in the English extraction prompt", async () => {
+    const { buildParamExtractorPrompt } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    const prompt = buildParamExtractorPrompt(
+      "en",
+      { inferredType: "double-span-beam" },
+      beamPlugin,
+      "The left support is pinned and the others are rollers free in global X.",
+    );
+
+    expect(prompt).toContain("restraints are exactly [ux,uy,uz,rx,ry,rz]");
+    expect(prompt).toContain("a pin is [true,true,true,false,false,false]");
+    expect(prompt).toContain("a roller free in global X is [false,true,true,false,false,false]");
+    expect(prompt).toContain("Never supply a load unit or load kind that the user did not provide");
+    expect(prompt).toContain("does not distinguish total force, line load, or area load");
+    expect(prompt).toContain("A source area load and the line load derived from it by tributary width are not independent loads");
+    expect(prompt).toContain('"factors": { "<loadCaseId>": number }');
   });
 
   test("includes structured semantic seismic workflow contract in extraction prompt", async () => {

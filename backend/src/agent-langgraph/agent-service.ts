@@ -14,7 +14,7 @@ import type { SkillManifest } from '../agent-runtime/types.js';
 import { buildAgentGraph } from './graph.js';
 import { FileCheckpointer } from './file-checkpointer.js';
 import { streamGraphToChunks, type StreamContext } from './streaming.js';
-import { type AgentState } from './state.js';
+import type { AgentState, AgentToolAccessPolicy } from './state.js';
 import { getAllowShellTools, getCheckpointerDataDir, getWorkspaceRoot, getWorkspaceSkillRoot } from './config.js';
 import { config } from '../config/index.js';
 import type { AgentStreamChunk } from '../types/agent-stream.js';
@@ -59,6 +59,23 @@ export interface LangGraphRunInput {
     includeReport?: boolean;
     seismicWorkflow?: Record<string, unknown>;
     attachments?: AttachmentInfo[];
+    restrictFileAccessToAttachments?: boolean;
+  };
+}
+
+export function buildToolAccessPolicy(
+  context: LangGraphRunInput['context'] | undefined,
+): AgentToolAccessPolicy {
+  return {
+    enabledToolIds: Array.isArray(context?.enabledToolIds)
+      ? [...context.enabledToolIds]
+      : null,
+    disabledToolIds: Array.isArray(context?.disabledToolIds)
+      ? [...context.disabledToolIds]
+      : null,
+    fileAccessAllowlist: context?.restrictFileAccessToAttachments
+      ? (context.attachments ?? []).map((attachment) => attachment.relPath)
+      : null,
   };
 }
 
@@ -655,6 +672,9 @@ export class LangGraphAgentService {
       codeCheckClient: this.codeCheckClient,
       structureProtocolClient: this.structureProtocolClient,
       workspaceRoot: this.workspaceRoot,
+      fileAccessAllowlist: input?.context?.restrictFileAccessToAttachments
+        ? (input.context.attachments || []).map((attachment) => attachment.relPath)
+        : undefined,
       enabledToolIds: input?.context?.enabledToolIds,
       disabledToolIds: input?.context?.disabledToolIds,
       allowShell: getAllowShellTools(),
@@ -752,6 +772,7 @@ export class LangGraphAgentService {
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
+        toolAccessPolicy: buildToolAccessPolicy(input.context),
         lastUserMessage: initialPayload.canonicalMessage,
         contextSeismicWorkflow,
         policy: {
@@ -837,6 +858,7 @@ export class LangGraphAgentService {
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
+        toolAccessPolicy: buildToolAccessPolicy(input.context),
         lastUserMessage: initialPayload.canonicalMessage,
         contextSeismicWorkflow,
         policy: {
@@ -881,6 +903,7 @@ export class LangGraphAgentService {
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: input.context?.skillIds || [],
+        toolAccessPolicy: buildToolAccessPolicy(input.context),
         lastUserMessage: initialPayload.canonicalMessage,
         contextSeismicWorkflow,
         policy: {
