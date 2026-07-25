@@ -144,6 +144,11 @@ def _process_ids_by_name(process_name: str) -> set[int] | None:
         return None
     text = (proc.stdout or "").strip()
     if proc.returncode != 0:
+        # Get-Process returns a nonzero status when no process matches. An
+        # empty result is a successful snapshot of the "none running" state,
+        # not a reason to disable post-run cleanup.
+        if not text:
+            return set()
         return None
     if not text:
         return set()
