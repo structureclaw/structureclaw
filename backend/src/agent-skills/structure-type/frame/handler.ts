@@ -31,8 +31,8 @@ export const handler: SkillHandler = {
     };
   },
 
-  extractDraft({ llmDraftPatch, currentState }) {
-    return buildFrameDraftPatch(llmDraftPatch, currentState);
+  extractDraft({ llmDraftPatch, currentState, locale }) {
+    return buildFrameDraftPatch(llmDraftPatch, currentState, locale);
   },
 
   mergeState(existing, patch) {
@@ -60,6 +60,9 @@ export const handler: SkillHandler = {
   },
 
   buildModel(state) {
+    if (computeFrameMissing(state, 'execution').critical.length > 0) {
+      return undefined;
+    }
     return buildFrameModel(state);
   },
 

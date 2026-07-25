@@ -446,6 +446,72 @@ describe('frame canonicalize core contract', () => {
     expect(lineCase.loads.map((load) => load.element)).toEqual(['B10', 'B11', 'B12', 'B13', 'B14', 'B15']);
   });
 
+  test('preserves named line-load cases and explicit load combinations', () => {
+    const patch = buildFrameDraftPatch(
+      {
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          geometry: {
+            storyHeightsM: [3.6, 3.6],
+            bayWidthsM: [5.4, 6],
+          },
+          loads: [
+            {
+              kind: 'line',
+              magnitude: 10,
+              unit: 'kN/m',
+              direction: 'gravity',
+              caseId: 'D',
+              caseType: 'dead',
+            },
+            {
+              kind: 'line',
+              magnitude: 8,
+              unit: 'kN/m',
+              direction: 'gravity',
+              caseId: 'L',
+              caseType: 'live',
+            },
+          ],
+          analysis: {
+            type: 'static',
+            loadCombinations: [{ id: 'ULS', factors: { D: 1.2, L: 1.4 } }],
+          },
+        },
+      },
+      undefined,
+    );
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameBaseSupportType: 'fixed',
+      ...patch,
+    });
+
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L']);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D')).toMatchObject({
+      type: 'dead',
+      loads: [
+        { element: 'B7', wz: -10 },
+        { element: 'B8', wz: -10 },
+        { element: 'B9', wz: -10 },
+        { element: 'B10', wz: -10 },
+      ],
+    });
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L')).toMatchObject({
+      type: 'live',
+      loads: [
+        { element: 'B7', wz: -8 },
+        { element: 'B8', wz: -8 },
+        { element: 'B9', wz: -8 },
+        { element: 'B10', wz: -8 },
+      ],
+    });
+    expect(model.load_combinations).toEqual([
+      { id: 'ULS', factors: { D: 1.2, L: 1.4 } },
+    ]);
+  });
+
   test('targets Chinese top-story frame line loads to top story beams', () => {
     const model = buildFrameModel({
       inferredType: 'frame',
@@ -470,6 +536,174 @@ describe('frame canonicalize core contract', () => {
     expect(lineCase.loads).toHaveLength(2);
     expect(lineCase.loads.map((load) => load.story)).toEqual(['F3', 'F3']);
     expect(lineCase.loads.map((load) => load.element)).toEqual(['B14', 'B15']);
+  });
+
+  test('applies story-and-span line loads once to each requested 2d beam', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 2,
+      storyHeightsM: [3.6, 3.6, 3.6],
+      bayWidthsM: [6, 6],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 1, spanIndex: 1 } },
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 1, spanIndex: 2 } },
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 2, spanIndex: 1 } },
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 2, spanIndex: 2 } },
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 3, spanIndex: 1 } },
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 3, spanIndex: 2 } },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase.loads).toHaveLength(6);
+    expect(lineCase.loads.map((load) => load.element)).toEqual([
+      'B10', 'B11', 'B12', 'B13', 'B14', 'B15',
+    ]);
+  });
+
+  test('prefers structured story locations over textual load targets and array order', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 1,
+      storyHeightsM: [3.3, 3.3, 3.3],
+      bayWidthsM: [6],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'line', magnitude: 8, unit: 'kN/m', direction: 'gravity', target: 'top-story beam', location: { story: 1 } },
+          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity', location: { story: 3 } },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase.loads).toEqual([
+      expect.objectContaining({ element: 'B7', story: 'F1', wz: -8 }),
+      expect.objectContaining({ element: 'B9', story: 'F3', wz: -12 }),
+    ]);
+  });
+
+  test('preserves explicit 3d topology when derived bay widths conflict', () => {
+    const topology = {
+      nodes: [
+        { id: 'N000', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+        { id: 'N010', x: 0, y: 5, z: 0, restraints: [true, true, true, true, true, true] },
+        { id: 'N100', x: 6, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+        { id: 'N110', x: 6, y: 5, z: 0, restraints: [true, true, true, true, true, true] },
+        { id: 'N001', x: 0, y: 0, z: 3.6 },
+        { id: 'N011', x: 0, y: 5, z: 3.6 },
+        { id: 'N101', x: 6, y: 0, z: 3.6 },
+        { id: 'N111', x: 6, y: 5, z: 3.6 },
+      ],
+      members: [
+        { id: 'C1', nodes: ['N000', 'N001'] },
+        { id: 'C2', nodes: ['N010', 'N011'] },
+        { id: 'C3', nodes: ['N100', 'N101'] },
+        { id: 'C4', nodes: ['N110', 'N111'] },
+        { id: 'BX1', nodes: ['N001', 'N101'] },
+        { id: 'BX2', nodes: ['N011', 'N111'] },
+        { id: 'BY1', nodes: ['N001', 'N011'] },
+        { id: 'BY2', nodes: ['N101', 'N111'] },
+      ],
+    };
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '3d',
+      storyCount: 1,
+      bayCountX: 2,
+      bayCountY: 1,
+      storyHeightsM: [3.6],
+      bayWidthsXM: [6, 6],
+      bayWidthsYM: [5],
+      floorLoads: [{ story: 1, verticalKN: 300 }],
+      frameMaterial: 'Q345',
+      frameColumnSection: 'HW300X300',
+      frameBeamSection: 'HN400X200',
+      frameBaseSupportType: 'fixed',
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        topology,
+        loads: [
+          { kind: 'area', magnitude: 10, unit: 'kN/m2', direction: 'gravity', location: { story: 1 } },
+        ],
+      },
+      updatedAt: 0,
+    });
+
+    expect(model.nodes).toHaveLength(8);
+    expect(model.elements).toHaveLength(8);
+    expect(model.nodes.map((node) => node.id)).toEqual(topology.nodes.map((node) => node.id));
+    expect(model.elements.map((element) => element.id)).toEqual(topology.members.map((member) => member.id));
+    expect(model.stories).toEqual([
+      expect.objectContaining({ id: 'F1', height: 3.6, elevation: 0, dead_load: 10 }),
+    ]);
+    expect(model.metadata).toEqual(expect.objectContaining({
+      topologySource: 'engineering-draft',
+      bayCountX: 1,
+      bayCountY: 1,
+      geometry: {
+        storyHeightsM: [3.6],
+        bayWidthsXM: [6],
+        bayWidthsYM: [5],
+      },
+    }));
+  });
+
+  test('canonicalizes active-plane fixed restraints in explicit 2d frame topology', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3.6],
+      bayWidthsM: [6],
+      frameBaseSupportType: 'fixed',
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        topology: {
+          nodes: [
+            { id: 'B0', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+            { id: 'B1', x: 6, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+            { id: 'T0', x: 0, y: 0, z: 3.6, restraints: [false, false, false, false, false, false] },
+            { id: 'T1', x: 6, y: 0, z: 3.6, restraints: [false, false, false, false, false, false] },
+          ],
+          members: [
+            { id: 'C1', nodes: ['B0', 'T0'] },
+            { id: 'C2', nodes: ['B1', 'T1'] },
+            { id: 'B1', nodes: ['T0', 'T1'] },
+          ],
+        },
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', location: { story: 1 } },
+        ],
+      },
+      updatedAt: 0,
+    });
+
+    expect(model.nodes.find((node) => node.id === 'B0').restraints).toEqual(
+      [true, true, true, true, true, true],
+    );
+    expect(model.nodes.find((node) => node.id === 'B1').restraints).toEqual(
+      [true, true, true, true, true, true],
+    );
+    expect(model.nodes.find((node) => node.id === 'T0').restraints).toEqual(
+      [false, false, false, false, false, false],
+    );
   });
 
   test('applies explicitly located 2d frame nodal loads only to their requested joints', () => {
@@ -502,6 +736,92 @@ describe('frame canonicalize core contract', () => {
     ]);
   });
 
+  test('maps explicitly located point loads to the top-right frame joint', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [12],
+      bayWidthsM: [24],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'line', magnitude: 36, unit: 'kN/m', direction: 'gravity', target: 'roof-beam' },
+          { kind: 'point', magnitude: 98, unit: 'kN', direction: 'gravity', location: { story: 1, nodeRole: 'right-side' } },
+          { kind: 'point', magnitude: 10, unit: 'kN', direction: 'globalX', location: { story: 1, nodeRole: 'right-side' } },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const nodalCase = model.load_cases.find((loadCase) => loadCase.id === 'LAT');
+    expect(nodalCase).toBeDefined();
+    expect(nodalCase.loads).toEqual([
+      { type: 'nodal', node: 'N1_1', story: 'F1', fz: -98, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+      { type: 'nodal', node: 'N1_1', story: 'F1', fx: 10, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+    ]);
+  });
+
+  test('preserves named load cases for explicitly located frame nodal loads', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [12],
+      bayWidthsM: [24],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          {
+            kind: 'line',
+            magnitude: 36,
+            unit: 'kN/m',
+            direction: 'gravity',
+            target: 'roof-beam',
+            caseId: 'D',
+            caseType: 'dead',
+          },
+          {
+            kind: 'point',
+            magnitude: 98,
+            unit: 'kN',
+            direction: 'gravity',
+            location: { story: 1, nodeRole: 'right-side' },
+            caseId: 'D',
+            caseType: 'dead',
+          },
+          {
+            kind: 'point',
+            magnitude: 10,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 1, nodeRole: 'right-side' },
+            caseId: 'D',
+            caseType: 'dead',
+          },
+        ],
+        analysis: {
+          loadCombinations: [{ id: 'ULS', factors: { D: 1 } }],
+        },
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D']);
+    expect(model.load_cases[0].loads).toEqual([
+      { type: 'distributed', element: 'B3', story: 'F1', wz: -36, source: 'engineering_draft_line_loads', reference_frame: 'global' },
+      { type: 'nodal', node: 'N1_1', story: 'F1', fz: -98, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+      { type: 'nodal', node: 'N1_1', story: 'F1', fx: 10, source: 'engineering_draft_nodal_loads', reference_frame: 'global' },
+    ]);
+    expect(model.load_combinations).toEqual([{ id: 'ULS', factors: { D: 1 } }]);
+  });
+
   test('does not treat member-end top wording as a top-story frame line target', () => {
     const model = buildFrameModel({
       inferredType: 'frame',
@@ -525,6 +845,56 @@ describe('frame canonicalize core contract', () => {
     expect(lineCase).toBeDefined();
     expect(lineCase.loads).toHaveLength(6);
     expect(lineCase.loads.map((load) => load.story)).toEqual(['F1', 'F1', 'F2', 'F2', 'F3', 'F3']);
+  });
+
+  test('targets explicit-topology line loads to their named beam elements', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsM: [6],
+      frameMaterial: 'Q345',
+      frameColumnSection: 'HW350X350',
+      frameBeamSection: 'HN500X200',
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        topology: {
+          nodes: [
+            { id: 'N1', x: 0, y: 0, z: 0 },
+            { id: 'N2', x: 6, y: 0, z: 0 },
+            { id: 'N3', x: 0, y: 0, z: 3.6 },
+            { id: 'N4', x: 6, y: 0, z: 3.6 },
+            { id: 'N5', x: 0, y: 0, z: 7.2 },
+            { id: 'N6', x: 6, y: 0, z: 7.2 },
+          ],
+          members: [
+            { id: 'N1-N3', nodes: ['N1', 'N3'] },
+            { id: 'N2-N4', nodes: ['N2', 'N4'] },
+            { id: 'N3-N5', nodes: ['N3', 'N5'] },
+            { id: 'N4-N6', nodes: ['N4', 'N6'] },
+            { id: 'N3-N4', nodes: ['N3', 'N4'] },
+            { id: 'N5-N6', nodes: ['N5', 'N6'] },
+          ],
+        },
+        loads: [
+          { kind: 'line', magnitude: 60, unit: 'kN/m', direction: 'gravity', target: 'N3-N4', caseId: 'D', caseType: 'dead' },
+          { kind: 'line', magnitude: 60, unit: 'kN/m', direction: 'gravity', target: 'N5-N6', caseId: 'D', caseType: 'dead' },
+        ],
+        analysis: {
+          loadCombinations: [{ id: 'ULS', factors: { D: 1 } }],
+        },
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    expect(model.load_cases[0].loads).toEqual([
+      { type: 'distributed', element: 'N3-N4', story: 'F1', wz: -60, source: 'engineering_draft_line_loads', reference_frame: 'global' },
+      { type: 'distributed', element: 'N5-N6', story: 'F2', wz: -60, source: 'engineering_draft_line_loads', reference_frame: 'global' },
+    ]);
   });
 
   test('targets Chinese x-axis frame line loads to x-direction beams in 3d', () => {

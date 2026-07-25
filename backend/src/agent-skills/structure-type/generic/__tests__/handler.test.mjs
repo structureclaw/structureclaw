@@ -70,6 +70,42 @@ describe('generic structure-type handler', () => {
     expect(missing.critical).toEqual([]);
   });
 
+  test('keeps structured generic ambiguities as execution blockers and questions', () => {
+    const patch = handler.extractDraft({
+      message: 'Analyze this unusual structure. The load is 20.',
+      locale: 'en',
+      llmDraftPatch: {
+        inferredType: 'beam',
+        lengthM: 6,
+        supportType: 'simply-supported',
+        loadKN: 20,
+        draftIssues: [{
+          field: 'loadType',
+          severity: 'ambiguous',
+          reason: 'The load type and unit are not specified.',
+          question: 'Is 20 a point load in kN or a distributed load in kN/m?',
+        }],
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const missing = handler.computeMissing(state, 'execution');
+    const questions = handler.buildQuestions(missing.critical, missing.critical, state, 'en');
+
+    expect(missing.critical).toContain('loadType');
+    expect(questions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        paramKey: 'loadType',
+        question: 'Is 20 a point load in kN or a distributed load in kN/m?',
+      }),
+    ]));
+  });
+
   test('preserves structured seismic workflow in generic draft state', () => {
     const seismicWorkflow = {
       methodPreference: 'auto',

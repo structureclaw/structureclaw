@@ -16,7 +16,10 @@ import { matchConservativeStructuralRoute } from '../../../agent-runtime/structu
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
+  DraftIssue,
   DraftState,
+  EngineeringDraft,
+  EngineeringDraftLoad,
   InteractionQuestion,
   SkillDefaultProposal,
   SkillHandler,
@@ -26,6 +29,175 @@ import type {
 const GEOMETRY_KEYS = ['lengthM'] as const;
 const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition', 'loadPositionM'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
+
+function beamNodeCoordinate(
+  engineeringDraft: EngineeringDraft,
+  target: string | undefined,
+): number | undefined {
+  if (!target) return undefined;
+  const topologyNode = engineeringDraft.topology?.nodes?.find((node) => node.id.toLowerCase() === target.trim().toLowerCase());
+  return topologyNode?.x;
+}
+
+function contradictoryPointLoadIssue(
+  engineeringDraft: EngineeringDraft | undefined,
+  locale: AppLocale,
+): DraftIssue | undefined {
+  if (!engineeringDraft) return undefined;
+  for (const load of engineeringDraft.loads ?? []) {
+    if ((load.kind !== 'point' && load.kind !== 'nodal') || load.location?.xM === undefined) continue;
+    const targetX = beamNodeCoordinate(engineeringDraft, load.target);
+    if (targetX === undefined || Math.abs(targetX - load.location.xM) <= 1e-6) continue;
+    return {
+      field: 'loadPosition',
+      value: { target: load.target, xM: load.location.xM },
+      severity: 'conflict',
+      reason: locale === 'zh'
+        ? `集中荷载目标 ${load.target} 与坐标 x=${load.location.xM}m 冲突。`
+        : `Point-load target ${load.target} conflicts with coordinate x=${load.location.xM}m.`,
+      question: locale === 'zh'
+        ? '请确认集中荷载的目标节点或坐标。'
+        : 'Please confirm the point-load node or coordinate.',
+    };
+  }
+  return undefined;
+}
+
+function isContradictoryPointLoad(
+  engineeringDraft: EngineeringDraft,
+  load: EngineeringDraftLoad,
+): boolean {
+  if ((load.kind !== 'point' && load.kind !== 'nodal') || load.location?.xM === undefined) {
+    return false;
+  }
+  const targetX = beamNodeCoordinate(engineeringDraft, load.target);
+  return targetX !== undefined && Math.abs(targetX - load.location.xM) > 1e-6;
+}
+
+function isConsistentPointLoad(
+  engineeringDraft: EngineeringDraft,
+  load: EngineeringDraftLoad,
+): boolean {
+  if (load.kind !== 'point' && load.kind !== 'nodal') return false;
+  const targetX = beamNodeCoordinate(engineeringDraft, load.target);
+  return targetX !== undefined
+    && (load.location?.xM === undefined || Math.abs(targetX - load.location.xM) <= 1e-6);
+}
+
+function sameBeamPointLoad(left: EngineeringDraftLoad, right: EngineeringDraftLoad): boolean {
+  return left.kind === right.kind
+    && left.unit === right.unit
+    && left.direction === right.direction
+    && left.target?.trim().toLowerCase() === right.target?.trim().toLowerCase()
+    && Math.abs(left.magnitude - right.magnitude) <= 1e-9;
+}
+
+function withLegacyBeamPositionCorrection(
+  existing: DraftState | undefined,
+  patch: DraftExtraction,
+): DraftState | undefined {
+  const xM = patch.loadPositionM;
+  const engineeringDraft = existing?.engineeringDraft;
+  if (!engineeringDraft || xM === undefined || !Number.isFinite(xM) || xM < 0) {
+    return existing;
+  }
+  let changed = false;
+  const loads = engineeringDraft.loads?.map((load) => {
+    if (!isContradictoryPointLoad(engineeringDraft, load)) return load;
+    const targetX = beamNodeCoordinate(engineeringDraft, load.target);
+    if (targetX === undefined || Math.abs(targetX - xM) > 1e-6) return load;
+    changed = true;
+    return {
+      ...load,
+      location: {
+        ...(load.location ?? {}),
+        xM,
+      },
+    };
+  });
+  if (!changed) return existing;
+  return {
+    ...existing,
+    engineeringDraft: {
+      ...engineeringDraft,
+      loads,
+    },
+  };
+}
+
+function clearResolvedBeamLoadConflict(state: DraftState): DraftState {
+  const engineeringDraft = state.engineeringDraft;
+  if (!engineeringDraft?.loads?.length) return state;
+  const loads = engineeringDraft.loads.filter((load, index, allLoads) => (
+    !isContradictoryPointLoad(engineeringDraft, load)
+    || !allLoads.some((candidate, candidateIndex) => (
+      candidateIndex !== index
+      && isConsistentPointLoad(engineeringDraft, candidate)
+      && sameBeamPointLoad(load, candidate)
+    ))
+  ));
+  const nextEngineeringDraft = loads.length === engineeringDraft.loads.length
+    ? engineeringDraft
+    : { ...engineeringDraft, loads };
+  if (contradictoryPointLoadIssue(nextEngineeringDraft, 'en')) {
+    return state;
+  }
+
+  const invalidDraftFields = Array.isArray(state.skillState?.invalidDraftFields)
+    ? state.skillState.invalidDraftFields.filter((field) => field !== 'loadPosition')
+    : undefined;
+  const skillState = state.skillState
+    ? {
+      ...state.skillState,
+      engineeringDraft: nextEngineeringDraft,
+      beamLoads: loads.map((load) => ({
+        kind: load.kind === 'line' || load.kind === 'distributed' || load.unit === 'kN/m'
+          ? 'distributed'
+          : 'point',
+        magnitude: load.magnitude,
+        unit: load.unit,
+        direction: load.direction,
+        target: load.target,
+        xM: load.location?.xM,
+        spanIndex: load.location?.spanIndex,
+      })),
+      invalidDraftFields: invalidDraftFields?.length ? invalidDraftFields : undefined,
+    }
+    : undefined;
+  const draftIssues = state.draftIssues?.filter((issue) => (
+    issue.field !== 'loadPosition' || issue.severity !== 'conflict'
+  ));
+  const resolvedPointLoad = loads.find((load) => isConsistentPointLoad(nextEngineeringDraft, load));
+  const resolvedPointLoadX = resolvedPointLoad
+    ? resolvedPointLoad.location?.xM ?? beamNodeCoordinate(nextEngineeringDraft, resolvedPointLoad.target)
+    : undefined;
+  return {
+    ...state,
+    engineeringDraft: nextEngineeringDraft,
+    draftIssues: draftIssues?.length ? draftIssues : undefined,
+    skillState,
+    loadPositionM: resolvedPointLoadX ?? state.loadPositionM,
+  };
+}
+
+function withBeamLoadConflict(patch: DraftExtraction, locale: AppLocale): DraftExtraction {
+  const conflict = contradictoryPointLoadIssue(patch.engineeringDraft, locale);
+  if (!conflict) return patch;
+  const invalidDraftFields = Array.isArray(patch.skillState?.invalidDraftFields)
+    ? patch.skillState.invalidDraftFields.filter((field): field is string => typeof field === 'string')
+    : [];
+  return {
+    ...patch,
+    draftIssues: [
+      ...(patch.draftIssues ?? []).filter((issue) => issue.field !== conflict.field || issue.severity !== 'conflict'),
+      conflict,
+    ],
+    skillState: {
+      ...(patch.skillState ?? {}),
+      invalidDraftFields: Array.from(new Set([...invalidDraftFields, 'loadPosition'])),
+    },
+  };
+}
 
 function applyBeamDefaults(patch: DraftExtraction): DraftExtraction {
   const nextPatch: DraftExtraction = { ...patch };
@@ -182,11 +354,16 @@ export const handler: SkillHandler = {
     const patch = normalizeLegacyDraftPatch(values);
     return toBeamPatch(patch);
   },
-  extractDraft({ llmDraftPatch }) {
-    return toBeamPatch(normalizeLlmDraftPatch(llmDraftPatch));
+  extractDraft({ locale, llmDraftPatch }) {
+    const patch = toBeamPatch(normalizeLlmDraftPatch(llmDraftPatch));
+    return withBeamLoadConflict(patch, locale);
   },
   mergeState(existing, patch) {
-    return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');
+    const beamPatch = toBeamPatch(patch);
+    const correctedExisting = withLegacyBeamPositionCorrection(existing, beamPatch);
+    return clearResolvedBeamLoadConflict(
+      mergeLegacyState(correctedExisting, beamPatch, 'beam', 'beam'),
+    );
   },
   computeMissing(state, phase) {
     return computeLegacyMissing({ ...state, inferredType: 'beam' }, phase, [...ALLOWED_KEYS]);
@@ -204,7 +381,7 @@ export const handler: SkillHandler = {
     return buildBeamReportNarrative(input);
   },
   buildModel(state) {
-    return buildLegacyModel({ ...state, inferredType: 'beam' });
+    return buildLegacyModel({ ...state, inferredType: 'beam' }, [...ALLOWED_KEYS]);
   },
   resolveStage(missingKeys) {
     return resolveLegacyStructuralStage(missingKeys);

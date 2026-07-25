@@ -37,6 +37,10 @@
   - `水平荷载500kN` → 2D 框架优先映射为 `{ "story": 层号, "lateralXKN": 500 }`
   - `x、y向水平荷载都是500kN` → 每层输出 `lateralXKN = 500` 且 `lateralYKN = 500`
 - 若用户给出面荷载/线荷载（如 `12kN/m²`、`8kN/m`）且层数、跨度等几何信息足够，应优先输出 `engineeringDraft.loads` 中的 `area` / `line` 荷载，由 runtime 换算为各层总荷载；只有几何信息不足以换算时，才追问各层总荷载（kN）。
+- 若用户明确说明某线荷载是由面荷载按受荷宽度折算得到，且要求采用该折算结果，则面荷载只是计算依据：只输出并施加折算后的 `line` 荷载，不要同时输出源 `area` 荷载。只有用户明确要求两者分别叠加时才同时保留。
+- 若用户只给出楼面荷载数值而没有单位，或没有说明它是总力、线荷载还是面荷载，不得自行补写单位或荷载种类；应输出 `draftIssues` 和 `skillState.invalidDraftFields`，要求用户确认。
+- 对作用在单个框架节点的 `point` / `nodal` 荷载，必须同时输出 `engineeringDraft.loads[].location.story` 和 `location.nodeRole`。`nodeRole` 使用 `left-side`、`right-side` 或 `middle`，不要只输出含糊的 `target: "column-top"`。
+- 若用户只说“柱顶”但没有指定左柱、右柱或中间柱，不要自行选择一侧；输出 `draftIssues`，字段使用 `frameNodalLoadLocation`，并要求用户确认节点位置。
 - 若消息中明确出现 `y向水平荷载`、`x、y向`、`x/y向` 等双向水平荷载语义，应优先输出 `frameDimension = "3d"`。
 - 若没有任何 Y 向证据，默认按 `2d` 收敛，而不是把 `frameDimension` 留空。
 

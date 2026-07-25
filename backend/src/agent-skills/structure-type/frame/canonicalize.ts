@@ -1,4 +1,5 @@
 import { mergeDraftPatchWithSupplemental } from '../../../agent-runtime/legacy.js';
+import { isLocalizedFramePointLoad } from '../../../agent-runtime/engineering-draft.js';
 import type { DraftExtraction, DraftFloorLoad, EngineeringDraftLoad } from '../../../agent-runtime/types.js';
 import type { FramePatchSources } from './types.js';
 
@@ -29,15 +30,20 @@ function stripDuplicatedLocalizedNodalLoads(
   floorLoads: DraftFloorLoad[] | undefined,
   engineeringLoads: EngineeringDraftLoad[] | undefined,
 ): DraftFloorLoad[] | undefined {
-  const localizedDirections = new Map<number, Set<'x' | 'y'>>();
+  const localizedDirections = new Map<number, Set<'x' | 'y' | 'z'>>();
   for (const load of engineeringLoads ?? []) {
+    if (!isLocalizedFramePointLoad(load)) continue;
     const story = load.location?.story;
-    if ((load.kind !== 'nodal' && load.kind !== 'point')
-      || !Number.isInteger(story)
-      || !load.location?.nodeRole) continue;
-    const direction = load.direction === 'globalX' ? 'x' : load.direction === 'globalY' ? 'y' : undefined;
+    if (!Number.isInteger(story)) continue;
+    const direction = load.direction === 'globalX'
+      ? 'x'
+      : load.direction === 'globalY'
+        ? 'y'
+        : load.direction === 'gravity' || load.direction === 'globalZ' || load.direction === undefined
+          ? 'z'
+          : undefined;
     if (!direction) continue;
-    const storyDirections = localizedDirections.get(story!) ?? new Set<'x' | 'y'>();
+    const storyDirections = localizedDirections.get(story!) ?? new Set<'x' | 'y' | 'z'>();
     storyDirections.add(direction);
     localizedDirections.set(story!, storyDirections);
   }
@@ -46,7 +52,7 @@ function stripDuplicatedLocalizedNodalLoads(
   for (const load of floorLoads ?? []) {
     const directions = localizedDirections.get(load.story);
     const next: DraftFloorLoad = { story: load.story };
-    if (load.verticalKN !== undefined) next.verticalKN = load.verticalKN;
+    if (load.verticalKN !== undefined && !directions?.has('z')) next.verticalKN = load.verticalKN;
     if (load.liveLoadKN !== undefined) next.liveLoadKN = load.liveLoadKN;
     if (load.lateralXKN !== undefined && !directions?.has('x')) next.lateralXKN = load.lateralXKN;
     if (load.lateralYKN !== undefined && !directions?.has('y')) next.lateralYKN = load.lateralYKN;

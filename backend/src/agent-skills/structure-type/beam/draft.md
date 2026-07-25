@@ -33,6 +33,8 @@
 ## 荷载位置映射
 - 点荷载优先位置：`end` 或 `midspan`
 - 均布荷载优先位置：`full-span`
+- 当荷载只作用于某个梁段时，在 `engineeringDraft.loads[].location.spanIndex` 中输出从 1 开始的梁段索引；不要只把“第几跨/哪一构件”写进 `target` 文本。
+- 外伸梁或带内部分析节点的梁必须在 `engineeringDraft.boundary.supportPositionsM` 中明确输出实际支座坐标；分析节点不等于支座。
 
 ## 输出规则
 - 必须同时输出所有已识别的参数，不能遗漏

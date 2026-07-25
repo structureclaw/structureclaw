@@ -328,6 +328,9 @@ export const handler: SkillHandler = {
   },
 
   buildModel(state) {
+    if (computeConcreteFrameMissing(state, 'execution').critical.length > 0) {
+      return undefined;
+    }
     try {
       const concreteGrade = (typeof state.frameConcreteGrade === 'string' && isValidConcreteGrade(state.frameConcreteGrade))
         ? state.frameConcreteGrade : 'C30';

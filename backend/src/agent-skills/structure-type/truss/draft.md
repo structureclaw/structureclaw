@@ -21,6 +21,7 @@
   - `loadType`: `point` for nodal/joint loads.
   - `loadPosition`: `top-nodes` for upper-chord/top-chord nodes, `middle-joint` for a mid-height joint, `free-joint` for a named or otherwise specified joint.
 - Do not leave `engineeringDraft.loads` empty when the user explicitly gives a nodal load.
+- When a follow-up changes existing chord-node loads to a new magnitude, output only the updated load entry with the same chord/location and load case. The new magnitude replaces the old one; do not preserve both entries.
 - If the user gives a line/distributed load on the truss, output `kind: "line"` or `kind: "distributed"`, `unit: "kN/m"`, and legacy `loadType: "distributed"`.
 - If the magnitude or unit is ambiguous, omit `loadKN`, add a `draftIssues` entry for `loadKN`, and include `loadKN` in `skillState.invalidDraftFields`.
 
@@ -30,6 +31,8 @@
 - Pratt / 普拉特桁架 maps to `skillState.trussTopology: "pratt"`.
 - Howe / 豪式桁架 maps to `skillState.trussTopology: "howe"`.
 - K truss / K形桁架 maps to `skillState.trussTopology: "k"`.
+- Do not silently add members that contradict the user's topology description. If a named triangulated truss system is combined with the absence of the web members needed to form that system, report a `draftIssues` conflict for `trussTopology`, add `trussTopology` to `skillState.invalidDraftFields`, and ask which requirement should be retained.
+- 不要静默补上与用户拓扑描述冲突的杆件。若用户指定了需要腹杆形成的三角桁架体系，同时又要求取消形成该体系所需的腹杆，应为 `trussTopology` 输出 `draftIssues` 冲突，将其加入 `skillState.invalidDraftFields`，并追问保留哪一项要求。
 
 ## Examples
 

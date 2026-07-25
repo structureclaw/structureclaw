@@ -13,9 +13,16 @@ import type {
   SkillMissingResult,
   SkillReportNarrativeInput,
 } from '../../../agent-runtime/types.js';
-import { FRAME_MATERIAL_KEYS, REQUIRED_KEYS } from './constants.js';
+import {
+  FRAME_MATERIAL_KEYS,
+  LOAD_BOUNDARY_KEYS,
+  REQUIRED_KEYS,
+} from './constants.js';
 import { getDefaultBeamSection, getDefaultColumnSection, hasFrameAnalysisLoadInput } from './model.js';
-import { hasLateralYFloorLoad } from './extract-llm.js';
+import {
+  FRAME_NODAL_LOAD_LOCATION_FIELD,
+  hasLateralYFloorLoad,
+} from './extract-llm.js';
 
 function inferFrameDimensionProposal(state: DraftState): '2d' | '3d' {
   if (state.frameDimension === '3d') return '3d';
@@ -66,11 +73,25 @@ export function computeFrameMissing(state: DraftState, phase: 'interactive' | 'e
   const missing = computeLegacyMissing(
     { ...state, inferredType: 'frame' },
     phase,
-    [...REQUIRED_KEYS],
+    [
+      ...REQUIRED_KEYS,
+      ...LOAD_BOUNDARY_KEYS,
+      ...FRAME_MATERIAL_KEYS,
+      FRAME_NODAL_LOAD_LOCATION_FIELD,
+    ],
   );
-  if (!hasFrameAnalysisLoadInput(state)) return missing;
+  const invalidDraftFields = Array.isArray(state.skillState?.invalidDraftFields)
+    ? state.skillState.invalidDraftFields
+    : [];
+  const critical = invalidDraftFields.includes(FRAME_NODAL_LOAD_LOCATION_FIELD)
+    && !missing.critical.includes(FRAME_NODAL_LOAD_LOCATION_FIELD)
+    ? [...missing.critical, FRAME_NODAL_LOAD_LOCATION_FIELD]
+    : missing.critical;
+  if (!hasFrameAnalysisLoadInput(state) || invalidDraftFields.includes('floorLoads')) {
+    return { ...missing, critical };
+  }
   return {
-    critical: missing.critical.filter((key) => key !== 'floorLoads'),
+    critical: critical.filter((key) => key !== 'floorLoads'),
     optional: missing.optional.filter((key) => key !== 'floorLoads'),
   };
 }
@@ -81,6 +102,7 @@ export function mapFrameLabels(keys: string[], locale: AppLocale): string[] {
       case 'frameMaterial': return locale === 'zh' ? '材料牌号' : 'Material grade';
       case 'frameColumnSection': return locale === 'zh' ? '柱截面' : 'Column section';
       case 'frameBeamSection': return locale === 'zh' ? '梁截面' : 'Beam section';
+      case FRAME_NODAL_LOAD_LOCATION_FIELD: return locale === 'zh' ? '框架节点荷载位置' : 'Frame nodal-load location';
       default: return buildLegacyLabels([key], locale)[0];
     }
   });

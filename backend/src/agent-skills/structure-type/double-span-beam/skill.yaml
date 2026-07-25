@@ -2,11 +2,11 @@ id: double-span-beam
 domain: structure-type
 source: builtin
 name:
-  zh: 双跨梁
-  en: Double-Span Beam
+  zh: 连续梁
+  en: Continuous Beam
 description:
-  zh: 双跨梁需求识别与补参 skill。
-  en: Skill for double-span beam intent detection and clarification.
+  zh: 两跨及以上连续梁的需求识别、补参与模型构建 skill。
+  en: Skill for intent detection, clarification, and model construction of continuous beams with two or more spans.
 triggers:
   - double-span
   - 双跨梁

@@ -182,6 +182,73 @@ describe('truss handler', () => {
     expect(model.load_cases[0].loads.reduce((sum, load) => sum + Math.abs(load.fz), 0)).toBe(40);
   });
 
+  test('replaces revised top-chord loads when equivalent aliases preserve the old draft', () => {
+    const initialPatch = handler.extractDraft({
+      message: 'Apply 10kN downward at each interior top node.',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 15, heightM: 2.5, spanLengthsM: [3, 3, 3, 3, 3] },
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 10,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'interior top chord nodes',
+              location: { nodeRole: 'top' },
+              caseId: 'LC1',
+            },
+          ],
+          analysis: {
+            loadCombinations: [{ id: 'ULS', factors: { LC1: 1 } }],
+          },
+        },
+      },
+    });
+    const initialState = handler.mergeState(undefined, initialPatch);
+    const revisedPatch = handler.extractDraft({
+      message: 'Change each interior top-node load to 15kN.',
+      currentState: initialState,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 10,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'interior top chord nodes',
+              location: { nodeRole: 'top' },
+              caseId: 'LC1',
+            },
+            {
+              kind: 'point',
+              magnitude: 15,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'all internal upper chord joints',
+              location: { nodeRole: 'top' },
+              caseType: 'other',
+            },
+          ],
+          analysis: {
+            loadCombinations: [{ id: 'ULS', factors: { LC1: 1 } }],
+          },
+        },
+      },
+    });
+    const state = handler.mergeState(initialState, revisedPatch);
+    const model = handler.buildModel(state);
+
+    expect(state.engineeringDraft.loads).toEqual([
+      expect.objectContaining({ magnitude: 15, location: { nodeRole: 'top' } }),
+    ]);
+    expect(model.load_cases[0].loads).toHaveLength(4);
+    expect(model.load_cases[0].loads.every((load) => load.fz === -15)).toBe(true);
+  });
+
   test('preserves explicit truss topology and node-targeted loads', () => {
     const explicitMembers = [
       ['BC0', 'B0', 'B1'],
@@ -202,9 +269,9 @@ describe('truss handler', () => {
           geometry: { lengthM: 6, heightM: 2, spanLengthsM: [3, 3] },
           topology: {
             nodes: [
-              { id: 'B0', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+              { id: 'B0', x: 0, y: 0, z: 0, restraints: [true, false, true, false, false, false] },
               { id: 'B1', x: 3, y: 0, z: 0 },
-              { id: 'B2', x: 6, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+              { id: 'B2', x: 6, y: 0, z: 0, restraints: [false, false, true, false, false, false] },
               { id: 'T0', x: 0, y: 0, z: 2 },
               { id: 'T1', x: 3, y: 0, z: 2 },
               { id: 'T2', x: 6, y: 0, z: 2 },
@@ -227,7 +294,124 @@ describe('truss handler', () => {
       expect.objectContaining({ node: 'B1', fz: -10 }),
       expect.objectContaining({ node: 'T1', fx: 20 }),
     ]);
+    expect(model.nodes.find((node) => node.id === 'B0')?.restraints).toEqual(
+      [true, true, true, false, false, false],
+    );
+    expect(model.nodes.find((node) => node.id === 'B2')?.restraints).toEqual(
+      [false, true, true, false, false, false],
+    );
     expect(model.metadata).toEqual(expect.objectContaining({ topologySource: 'engineering-draft' }));
+  });
+
+  test('maps semantic interior top-chord loads onto explicit one-based node ids', () => {
+    const nodes = [];
+    const members = [];
+    for (let index = 1; index <= 7; index += 1) {
+      const x = (index - 1) * 3;
+      nodes.push({
+        id: `B${index}`,
+        x,
+        y: 0,
+        z: 0,
+        ...(index === 1
+          ? { restraints: [true, true, true, false, false, false] }
+          : index === 7
+            ? { restraints: [false, true, true, false, false, false] }
+            : {}),
+      });
+      nodes.push({ id: `T${index}`, x, y: 0, z: 3 });
+      members.push({ id: `V${index}`, nodes: [`B${index}`, `T${index}`] });
+      if (index < 7) {
+        members.push({ id: `B${index}`, nodes: [`B${index}`, `B${index + 1}`] });
+        members.push({ id: `T${index}`, nodes: [`T${index}`, `T${index + 1}`] });
+      }
+    }
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 18, heightM: 3 },
+          topology: { nodes, members },
+          loads: [{
+            kind: 'nodal',
+            magnitude: 12,
+            unit: 'kN',
+            direction: 'gravity',
+            target: 'interior top chord nodes',
+            location: { nodeRole: 'top' },
+          }],
+        },
+      },
+    });
+    const model = handler.buildModel(handler.mergeState(undefined, patch));
+
+    expect(model.load_cases[0].loads).toEqual(
+      ['T2', 'T3', 'T4', 'T5', 'T6'].map((node) => ({
+        node,
+        fz: -12,
+        reference_frame: 'global',
+      })),
+    );
+  });
+
+  test('maps multiple coordinate-located chord loads one-to-one without expanding each load to the full chord', () => {
+    const nodes = [];
+    const members = [];
+    for (let index = 0; index <= 4; index += 1) {
+      const x = index * 2.75;
+      nodes.push({
+        id: `B${index}`,
+        x,
+        y: 0,
+        z: 0,
+        ...(index === 0
+          ? { restraints: [true, true, true, false, false, false] }
+          : index === 4
+            ? { restraints: [false, true, true, false, false, false] }
+            : {}),
+      });
+      nodes.push({ id: `T${index}`, x, y: 0, z: 2.2 });
+      members.push({ id: `V${index}`, nodes: [`B${index}`, `T${index}`] });
+      if (index < 4) {
+        members.push({ id: `B${index}`, nodes: [`B${index}`, `B${index + 1}`] });
+        members.push({ id: `T${index}`, nodes: [`T${index}`, `T${index + 1}`] });
+      }
+    }
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 11, heightM: 2.2 },
+          topology: { nodes, members },
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 7,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'node B1',
+              location: { xM: 2.75, nodeRole: 'bottom' },
+            },
+            {
+              kind: 'nodal',
+              magnitude: 19,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'node B3',
+              location: { xM: 8.25, nodeRole: 'bottom' },
+            },
+          ],
+        },
+      },
+    });
+    const model = handler.buildModel(handler.mergeState(undefined, patch));
+
+    expect(model.load_cases[0].loads).toEqual([
+      { node: 'B1', fz: -7, reference_frame: 'global' },
+      { node: 'B3', fz: -19, reference_frame: 'global' },
+    ]);
   });
 
   test('defaults missing truss height from span while preserving model match scale', () => {

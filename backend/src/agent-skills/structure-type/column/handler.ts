@@ -129,7 +129,7 @@ export const handler: SkillHandler = {
     return buildColumnReportNarrative(input);
   },
   buildModel(state) {
-    return buildLegacyModel({ ...state, inferredType: 'column' });
+    return buildLegacyModel({ ...state, inferredType: 'column' }, [...ALLOWED_KEYS]);
   },
   resolveStage(missingKeys) {
     return resolveLegacyStructuralStage(missingKeys);

@@ -13,7 +13,12 @@ import type {
   SkillMissingResult,
   SkillReportNarrativeInput,
 } from '../../../agent-runtime/types.js';
-import { REQUIRED_KEYS } from './constants.js';
+import {
+  DESIGN_CONDITION_KEYS,
+  FRAME_MATERIAL_KEYS,
+  LOAD_BOUNDARY_KEYS,
+  REQUIRED_KEYS,
+} from './constants.js';
 import { getDefaultBeamSection, getDefaultColumnSection, hasConcreteFrameAnalysisLoadInput } from './model.js';
 import { hasLateralYFloorLoad } from './extract-llm.js';
 
@@ -71,7 +76,12 @@ export function computeConcreteFrameMissing(state: DraftState, phase: 'interacti
   const baseMissing = computeLegacyMissing(
     { ...state, inferredType: 'frame' },
     phase,
-    [...REQUIRED_KEYS],
+    [
+      ...REQUIRED_KEYS,
+      ...LOAD_BOUNDARY_KEYS,
+      ...DESIGN_CONDITION_KEYS,
+      ...FRAME_MATERIAL_KEYS,
+    ],
   );
 
   // Add material keys as critical for concrete frames in interactive phase
@@ -95,7 +105,12 @@ export function computeConcreteFrameMissing(state: DraftState, phase: 'interacti
     }
   }
 
-  if (!hasConcreteFrameAnalysisLoadInput(state)) return baseMissing;
+  const invalidDraftFields = Array.isArray(state.skillState?.invalidDraftFields)
+    ? state.skillState.invalidDraftFields
+    : [];
+  if (!hasConcreteFrameAnalysisLoadInput(state) || invalidDraftFields.includes('floorLoads')) {
+    return baseMissing;
+  }
   return {
     critical: baseMissing.critical.filter((key) => key !== 'floorLoads'),
     optional: baseMissing.optional.filter((key) => key !== 'floorLoads'),

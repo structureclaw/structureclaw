@@ -189,7 +189,7 @@ export const handler: SkillHandler = {
     return buildPortalFrameReportNarrative(input);
   },
   buildModel(state) {
-    return buildLegacyModel({ ...state, inferredType: 'portal-frame' });
+    return buildLegacyModel({ ...state, inferredType: 'portal-frame' }, [...ALLOWED_KEYS]);
   },
   resolveStage(missingKeys) {
     return resolveLegacyStructuralStage(missingKeys);

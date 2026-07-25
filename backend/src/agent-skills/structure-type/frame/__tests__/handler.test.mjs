@@ -38,6 +38,57 @@ describe('frame handler composed modules', () => {
     expect(missing.critical).toEqual([]);
   });
 
+  test('blocks explicitly unresolved issues on otherwise defaultable frame fields', () => {
+    const state = {
+      inferredType: 'frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 2,
+      storyHeightsM: [3, 3],
+      bayWidthsM: [6, 6],
+      floorLoads: [
+        { story: 1, verticalKN: 120, lateralXKN: 30 },
+        { story: 2, verticalKN: 120, lateralXKN: 30 },
+      ],
+      draftIssues: [{
+        field: 'frameBaseSupportType',
+        severity: 'ambiguous',
+        reason: 'The base restraints are not defined.',
+      }],
+      skillState: { invalidDraftFields: ['frameBaseSupportType'] },
+      updatedAt: 0,
+    };
+
+    expect(handler.computeMissing(state, 'execution').critical).toContain('frameBaseSupportType');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
+  test('does not hide an invalid floor-load issue behind other explicit analysis loads', () => {
+    const state = {
+      inferredType: 'frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3],
+      bayWidthsM: [6],
+      floorLoads: [{ story: 1, verticalKN: 120 }],
+      engineeringDraft: {
+        structureType: 'frame',
+        loads: [{ kind: 'point', magnitude: 20, unit: 'kN', direction: 'globalX', target: 'roof-left' }],
+      },
+      draftIssues: [{
+        field: 'floorLoads',
+        severity: 'conflict',
+        reason: 'Two incompatible floor-load descriptions were supplied.',
+      }],
+      skillState: { invalidDraftFields: ['floorLoads'] },
+      updatedAt: 0,
+    };
+
+    expect(handler.computeMissing(state, 'execution').critical).toContain('floorLoads');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
   test('keeps total-load wording in interaction questions', () => {
     const [question] = buildFrameQuestions(
       ['floorLoads'],
@@ -74,6 +125,53 @@ describe('frame handler composed modules', () => {
       { story: 1, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
       { story: 2, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
     ]);
+  });
+
+  test('replaces a nodal load when a follow-up uses the equivalent point-load kind', () => {
+    const state = mergeFrameState(
+      {
+        inferredType: 'frame',
+        frameDimension: '2d',
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [{
+            kind: 'nodal',
+            magnitude: 37,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 2, nodeRole: 'left-side' },
+            caseId: 'W2',
+            caseType: 'wind',
+          }],
+        },
+        updatedAt: 0,
+      },
+      {
+        inferredType: 'frame',
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [{
+            kind: 'point',
+            magnitude: 62,
+            unit: 'kN',
+            direction: 'globalX',
+            location: { story: 2, nodeRole: 'left-side' },
+            caseId: 'W2',
+            caseType: 'wind',
+          }],
+        },
+      },
+    );
+
+    expect(state.engineeringDraft.loads).toEqual([{
+      kind: 'point',
+      magnitude: 62,
+      unit: 'kN',
+      direction: 'globalX',
+      location: { story: 2, nodeRole: 'left-side' },
+      caseId: 'W2',
+      caseType: 'wind',
+    }]);
   });
 
   test('preserves wind design parameters through frame state merge', () => {
@@ -303,6 +401,138 @@ describe('frame handler composed modules', () => {
 
     expect(state.floorLoads).toBeUndefined();
     expect(state.engineeringDraft.loads).toHaveLength(3);
+  });
+
+  test('keeps explicitly located right-column-top loads localized instead of duplicating floor loads', () => {
+    const patch = handler.extractDraft({
+      message: '单层框架，屋面梁线荷载13kN/m，右柱顶竖向41kN、水平7kN',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        frameDimension: '2d',
+        storyCount: 1,
+        bayCount: 1,
+        storyHeightsM: [6.4],
+        bayWidthsM: [17.5],
+        floorLoads: [{ story: 1, verticalKN: 41, lateralXKN: 7 }],
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [
+            { kind: 'line', magnitude: 13, unit: 'kN/m', direction: 'gravity', target: 'roof-beam' },
+            { kind: 'point', magnitude: 41, unit: 'kN', direction: 'gravity', location: { story: 1, nodeRole: 'right-side' } },
+            { kind: 'point', magnitude: 7, unit: 'kN', direction: 'globalX', location: { story: 1, nodeRole: 'right-side' } },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.floorLoads).toBeUndefined();
+    expect(state.engineeringDraft.loads).toHaveLength(3);
+  });
+
+  test('blocks a partially located frame nodal load instead of choosing a joint', () => {
+    const patch = handler.extractDraft({
+      message: '单层框架，柱顶竖向41kN',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        frameDimension: '2d',
+        storyCount: 1,
+        bayCount: 1,
+        storyHeightsM: [6.4],
+        bayWidthsM: [17.5],
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [
+            {
+              kind: 'point',
+              magnitude: 41,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'column-top',
+              location: { story: 1 },
+            },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.floorLoads).toBeUndefined();
+    expect(state.draftIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'frameNodalLoadLocation', severity: 'ambiguous' }),
+    ]));
+    expect(handler.computeMissing(state, 'execution').critical).toContain('frameNodalLoadLocation');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
+  test('clears the nodal-location issue after the LLM supplies the missing node role', () => {
+    const ambiguousPatch = handler.extractDraft({
+      message: '单层框架，柱顶竖向41kN',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        frameDimension: '2d',
+        storyCount: 1,
+        bayCount: 1,
+        storyHeightsM: [6.4],
+        bayWidthsM: [17.5],
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [{
+            kind: 'point',
+            magnitude: 41,
+            unit: 'kN',
+            direction: 'gravity',
+            target: 'column-top',
+            location: { story: 1 },
+          }],
+        },
+      },
+    });
+    const ambiguousState = handler.mergeState(undefined, ambiguousPatch);
+    const correctedPatch = handler.extractDraft({
+      message: '是右柱顶',
+      locale: 'zh',
+      currentState: ambiguousState,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [{
+            kind: 'point',
+            magnitude: 41,
+            unit: 'kN',
+            direction: 'gravity',
+            location: { story: 1, nodeRole: 'right-side' },
+          }],
+        },
+      },
+    });
+    const correctedState = handler.mergeState(ambiguousState, correctedPatch);
+
+    expect(correctedState.draftIssues).toBeUndefined();
+    expect(correctedState.skillState?.invalidDraftFields ?? []).not.toContain('frameNodalLoadLocation');
+    expect(correctedState.engineeringDraft.loads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        magnitude: 41,
+        location: { story: 1, nodeRole: 'right-side' },
+      }),
+    ]));
+    expect(correctedState.engineeringDraft.loads).toHaveLength(1);
+    expect(handler.computeMissing(correctedState, 'execution').critical).not.toContain('frameNodalLoadLocation');
   });
 
   test('does not treat non-gravity line loads as executable gravity loads', () => {

@@ -637,18 +637,16 @@ function resolveConcreteFrameLineLoadsByStory(
   if (!lineLoads.length || storyCount <= 0) return [];
 
   const resolved: ResolvedConcreteFrameLineLoad[] = [];
-  const untargeted = lineLoads.filter((load) => parseLineLoadStory(load.target, storyCount) === undefined);
   for (const load of lineLoads) {
-    const explicitStory = parseLineLoadStory(load.target, storyCount);
+    const locationStory = load.location?.story;
+    const explicitStory = typeof locationStory === 'number'
+      && Number.isInteger(locationStory)
+      && locationStory >= 1
+      && locationStory <= storyCount
+      ? locationStory
+      : parseLineLoadStory(load.target, storyCount);
     if (explicitStory !== undefined) {
       resolved.push({ load, story: explicitStory });
-      continue;
-    }
-    if (untargeted.length > 1) {
-      const index = untargeted.indexOf(load);
-      if (index >= 0 && index < storyCount) {
-        resolved.push({ load, story: index + 1 });
-      }
       continue;
     }
     for (let story = 1; story <= storyCount; story += 1) {
@@ -669,8 +667,16 @@ function build2dConcreteBeamLineLoads(
   const loads: Array<Record<string, unknown>> = [];
   for (const item of resolved) {
     const storyId = `F${item.story}`;
-    for (const element of elements) {
-      if (element.type !== 'beam' || element.story !== storyId) continue;
+    const storyBeams = elements.filter(
+      (element) => element.type === 'beam' && element.story === storyId,
+    );
+    const spanIndex = item.load.location?.spanIndex;
+    const targetBeams = spanIndex === undefined
+      ? storyBeams
+      : Number.isInteger(spanIndex) && spanIndex >= 1 && spanIndex <= storyBeams.length
+        ? [storyBeams[spanIndex - 1]]
+        : [];
+    for (const element of targetBeams) {
       loads.push({
         type: 'distributed',
         element: element.id,

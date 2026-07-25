@@ -1,5 +1,6 @@
 import { mapMissingFieldLabels } from '../../../agent-runtime/draft-guidance.js';
 import {
+  buildInteractionQuestions,
   mergeDraftState,
   normalizeInferredType,
   normalizeLoadPosition,
@@ -160,7 +161,20 @@ function normalizeGenericDraftPatch(
   if (loadPositionM !== undefined) patch.loadPositionM = loadPositionM;
 
   if (Object.keys(source).length > 0) {
-    patch.skillState = genericSkillStateFromSource(source);
+    const skillState = genericSkillStateFromSource(source);
+    const existingInvalidDraftFields = Array.isArray(skillState.invalidDraftFields)
+      ? skillState.invalidDraftFields.filter((field): field is string => typeof field === 'string')
+      : [];
+    const issueFields = draftIssues
+      ?.map((issue) => issue.field)
+      .filter((field): field is string => typeof field === 'string' && field.trim().length > 0)
+      ?? [];
+    patch.skillState = {
+      ...skillState,
+      ...((existingInvalidDraftFields.length || issueFields.length)
+        ? { invalidDraftFields: Array.from(new Set([...existingInvalidDraftFields, ...issueFields])) }
+        : {}),
+    };
   }
   return inferredType ? projectEngineeringDraftToLegacyPatch(patch, inferredType) : patch;
 }
@@ -252,19 +266,22 @@ export const handler: SkillHandler = {
       structuralTypeKey: (inferredType === 'unknown' ? 'unknown' : inferredType) as DraftState['structuralTypeKey'],
       supportLevel: patch.supportLevel ?? existing?.supportLevel ?? 'fallback',
       supportNote: patch.supportNote ?? existing?.supportNote,
-      skillState: {
-        ...(existing?.skillState ?? {}),
-        ...(patch.skillState ?? {}),
-      },
+      skillState: merged.skillState,
       updatedAt: Date.now(),
     };
   },
 
   computeMissing(state) {
+    const invalidDraftFields = Array.isArray(state.skillState?.invalidDraftFields)
+      ? state.skillState.invalidDraftFields.filter((field): field is string => typeof field === 'string')
+      : [];
     if (state.inferredType === 'unknown') {
-      return { critical: ['inferredType'], optional: [] };
+      return {
+        critical: Array.from(new Set(['inferredType', ...invalidDraftFields])),
+        optional: [],
+      };
     }
-    return { critical: [], optional: [] };
+    return { critical: invalidDraftFields, optional: [] };
   },
 
   mapLabels(keys, locale) {
@@ -273,17 +290,21 @@ export const handler: SkillHandler = {
 
   buildQuestions(keys, criticalMissing, state, locale) {
     if (state.inferredType === 'unknown') {
-      return keys.map((paramKey) => ({
-        paramKey,
-        label: locale === 'zh' ? '结构体系' : 'Structural system',
-        question: locale === 'zh'
-          ? '请先描述结构体系、构件连接关系和主要荷载；如果你已经有可计算结构模型，也可以直接贴 JSON。'
-          : 'Please first describe the structural system, member connectivity, and main loads. If you already have a computable structural model, you can paste the JSON directly.',
-        required: true,
-        critical: criticalMissing.includes(paramKey),
-      }));
+      return buildInteractionQuestions(keys, criticalMissing, state, locale).map((question) => (
+        question.paramKey === 'inferredType'
+          ? {
+            ...question,
+            question: locale === 'zh'
+              ? '请先描述结构体系、构件连接关系和主要荷载；如果你已经有可计算结构模型，也可以直接贴 JSON。'
+              : 'Please first describe the structural system, member connectivity, and main loads. If you already have a computable structural model, you can paste the JSON directly.',
+          }
+          : question
+      ));
     }
-    return [];
+    return buildInteractionQuestions(keys, criticalMissing, state, locale).map((question) => {
+      const issue = state.draftIssues?.find((candidate) => candidate.field === question.paramKey);
+      return issue?.question ? { ...question, question: issue.question } : question;
+    });
   },
 
   buildDefaultProposals() {

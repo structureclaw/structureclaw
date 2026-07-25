@@ -3,13 +3,21 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import {
+  hasIncompleteFramePointLoadLocation,
   mergeFrameFloorLoadValues,
   projectEngineeringDraftToLegacyPatch,
   projectWindPressureToFloorLoads,
 } from '../../../agent-runtime/engineering-draft.js';
 import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { normalizeNumber } from '../../../agent-runtime/fallback.js';
-import type { DraftExtraction, DraftFloorLoad, DraftState, DraftWindParams } from '../../../agent-runtime/types.js';
+import type {
+  DraftExtraction,
+  DraftFloorLoad,
+  DraftIssue,
+  DraftState,
+  DraftWindParams,
+} from '../../../agent-runtime/types.js';
+import type { AppLocale } from '../../../services/locale.js';
 import {
   canonicalizeFramePatch,
   fillFrameDimensionSpecificGeometry,
@@ -18,6 +26,51 @@ import {
 } from './canonicalize.js';
 import { GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS } from './constants.js';
 import { normalizeSectionName, normalizeSteelGrade } from './model.js';
+
+export const FRAME_NODAL_LOAD_LOCATION_FIELD = 'frameNodalLoadLocation';
+
+function withIncompleteFramePointLoadIssue(
+  patch: DraftExtraction,
+  locale: AppLocale,
+): DraftExtraction {
+  const incompleteLoads = (patch.engineeringDraft?.loads ?? [])
+    .filter(hasIncompleteFramePointLoadLocation);
+  if (!incompleteLoads.length) return patch;
+
+  const issue: DraftIssue = {
+    field: FRAME_NODAL_LOAD_LOCATION_FIELD,
+    value: incompleteLoads.map((load) => ({
+      target: load.target,
+      story: load.location?.story,
+      nodeRole: load.location?.nodeRole,
+    })),
+    severity: 'ambiguous',
+    reason: locale === 'zh'
+      ? '框架点荷载或节点荷载只给出了楼层或节点角色的一部分，无法唯一确定作用节点。'
+      : 'A frame point or nodal load provides only part of its story/node-role location, so the target joint is not unique.',
+    question: locale === 'zh'
+      ? '请确认该荷载所在楼层及节点位置（左侧、右侧或中间节点）。'
+      : 'Please confirm both the load story and node position (left, right, or middle joint).',
+  };
+  const invalidDraftFields = Array.isArray(patch.skillState?.invalidDraftFields)
+    ? patch.skillState.invalidDraftFields.filter((field): field is string => typeof field === 'string')
+    : [];
+
+  return {
+    ...patch,
+    draftIssues: [
+      ...(patch.draftIssues ?? []).filter((item) => item.field !== FRAME_NODAL_LOAD_LOCATION_FIELD),
+      issue,
+    ],
+    skillState: {
+      ...(patch.skillState ?? {}),
+      invalidDraftFields: Array.from(new Set([
+        ...invalidDraftFields,
+        FRAME_NODAL_LOAD_LOCATION_FIELD,
+      ])),
+    },
+  };
+}
 
 export function toFramePatch(patch: DraftExtraction): DraftExtraction {
   const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'frame');
@@ -183,8 +236,12 @@ export function coerceFrameDimension(
 export function buildFrameDraftPatch(
   llmDraftPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
+  locale: AppLocale = 'en',
 ): DraftExtraction {
-  const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
+  const normalizedLlmPatch = withIncompleteFramePointLoadIssue(
+    buildFramePatchFromLlm(llmDraftPatch, existingState),
+    locale,
+  );
   const nextPatch = canonicalizeFramePatch({
     existingState,
     supplementalPatch: {},

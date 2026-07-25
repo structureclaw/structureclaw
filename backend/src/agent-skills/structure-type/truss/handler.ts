@@ -309,7 +309,7 @@ export const handler: SkillHandler = {
     return buildTrussReportNarrative(input);
   },
   buildModel(state) {
-    return buildLegacyModel({ ...state, inferredType: 'truss' });
+    return buildLegacyModel({ ...state, inferredType: 'truss' }, [...ALLOWED_KEYS]);
   },
   resolveStage(missingKeys) {
     return resolveLegacyStructuralStage(missingKeys);

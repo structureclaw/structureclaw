@@ -49,12 +49,12 @@ function buildDoubleSpanDefaultReason(paramKey: string, locale: AppLocale): stri
   switch (paramKey) {
     case 'loadType':
       return locale === 'zh'
-        ? '双跨连续梁默认按均布荷载起步，便于快速识别跨中与中支座内力分配。'
-        : 'For a double-span continuous beam, start with distributed loading to quickly capture span and interior-support force sharing.';
+        ? '连续梁默认按均布荷载起步，便于快速识别跨中与中间支座的内力分配。'
+        : 'For a continuous beam, start with distributed loading to quickly capture span and interior-support force sharing.';
     case 'loadPosition':
       return locale === 'zh'
-        ? '默认全跨加载以覆盖两跨共同工作特征。'
-        : 'Default to full-span loading to represent coupled action across both spans.';
+        ? '默认全跨加载以覆盖各跨共同工作特征。'
+        : 'Default to full-span loading to represent coupled action across all spans.';
     default:
       return locale === 'zh'
         ? `根据 ${paramKey} 的推荐值采用默认配置。`
@@ -106,16 +106,16 @@ function buildDoubleSpanQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? '请确认双跨梁每跨跨度（默认两跨等跨；若不等跨请分别说明）。'
-          : 'Please confirm the span length per bay for the double-span beam (equal spans by default; specify otherwise if unequal).',
+          ? '请确认连续梁的跨数及各跨跨度；若为等跨，也可直接给出统一跨度。'
+          : 'Please confirm the number of spans and each span length; for equal spans, one common span length is sufficient.',
       };
     }
     if (question.paramKey === 'loadType') {
       return {
         ...question,
         question: locale === 'zh'
-          ? '请确认双跨梁荷载形式（point / distributed）。连续梁首轮建议用 distributed。'
-          : 'Please confirm double-span load type (point / distributed). For first-pass continuous-beam checks, distributed is recommended.',
+          ? '请确认连续梁荷载形式（point / distributed）。首轮分析建议用 distributed。'
+          : 'Please confirm the continuous-beam load type (point / distributed). Distributed loading is recommended for a first-pass analysis.',
         suggestedValue: 'distributed',
       };
     }
@@ -123,8 +123,8 @@ function buildDoubleSpanQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? '请确认荷载位置（midspan / end / full-span）。双跨连续作用通常先按 full-span。'
-          : 'Please confirm load position (midspan / end / full-span). For coupled two-span behavior, start with full-span in most cases.',
+          ? '请确认荷载位置或作用跨（midspan / end / full-span）。各跨共同作用时通常先按 full-span。'
+          : 'Please confirm the load position or loaded spans (midspan / end / full-span). For coupled multi-span behavior, start with full-span in most cases.',
         suggestedValue: 'full-span',
       };
     }
@@ -136,12 +136,12 @@ function buildDoubleSpanReportNarrative(input: SkillReportNarrativeInput): strin
   const base = buildDefaultReportNarrative(input);
   const continuousBeamNotes = [
     '',
-    input.locale === 'zh' ? '## 双跨连续梁专项说明' : '## Double-Span Continuous Beam Notes',
+    input.locale === 'zh' ? '## 连续梁专项说明' : '## Continuous Beam Notes',
     input.locale === 'zh'
-      ? '- 双跨连续梁建议重点关注中间支座负弯矩与跨中正弯矩的组合控制关系。'
-      : '- For double-span continuous beams, focus on the combined control of negative moment at the interior support and positive moment at span centers.',
+      ? '- 连续梁建议重点关注各中间支座负弯矩与各跨跨中正弯矩的组合控制关系。'
+      : '- For continuous beams, focus on the combined control of negative moments at interior supports and positive moments at span centers.',
     input.locale === 'zh'
-      ? '- 若两跨不等跨或荷载不对称，建议分别定义分跨荷载与工况组合后再进行校核对比。'
+      ? '- 若各跨不等跨或荷载不对称，建议分别定义分跨荷载与工况组合后再进行校核对比。'
       : '- If spans are unequal or loading is asymmetric, define per-span loads and load combinations explicitly before check comparisons.',
   ];
   return [base, ...continuousBeamNotes].join('\n');
@@ -188,7 +188,7 @@ export const handler: SkillHandler = {
     return buildDoubleSpanReportNarrative(input);
   },
   buildModel(state) {
-    return buildLegacyModel({ ...state, inferredType: 'double-span-beam' });
+    return buildLegacyModel({ ...state, inferredType: 'double-span-beam' }, [...ALLOWED_KEYS]);
   },
   resolveStage(missingKeys) {
     return resolveLegacyStructuralStage(missingKeys);

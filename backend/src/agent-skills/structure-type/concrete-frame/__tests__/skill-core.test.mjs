@@ -1,4 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
+import { handler } from '../../../../../dist/agent-skills/structure-type/concrete-frame/handler.js';
 import { canonicalizeConcreteFramePatch } from '../../../../../dist/agent-skills/structure-type/concrete-frame/canonicalize.js';
 import { buildConcreteFrameModel } from '../../../../../dist/agent-skills/structure-type/concrete-frame/model.js';
 import {
@@ -11,6 +12,61 @@ import { detectConcreteFrameStructuralType } from '../../../../../dist/agent-ski
 import { computeConcreteFrameMissing } from '../../../../../dist/agent-skills/structure-type/concrete-frame/interaction.js';
 
 describe('concrete-frame canonicalize core contract', () => {
+  test('blocks explicitly unresolved issues on otherwise defaultable frame fields', () => {
+    const state = {
+      inferredType: 'frame',
+      structuralTypeKey: 'concrete-frame',
+      skillId: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 2,
+      storyHeightsM: [3, 3],
+      bayWidthsM: [6, 6],
+      floorLoads: [
+        { story: 1, verticalKN: 120 },
+        { story: 2, verticalKN: 120 },
+      ],
+      draftIssues: [{
+        field: 'frameBaseSupportType',
+        severity: 'ambiguous',
+        reason: 'The base restraints are not defined.',
+      }],
+      skillState: { invalidDraftFields: ['frameBaseSupportType'] },
+      updatedAt: 0,
+    };
+
+    expect(handler.computeMissing(state, 'execution').critical).toContain('frameBaseSupportType');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
+  test('does not hide an invalid floor-load issue behind other explicit analysis loads', () => {
+    const state = {
+      inferredType: 'frame',
+      structuralTypeKey: 'concrete-frame',
+      skillId: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3],
+      bayWidthsM: [6],
+      floorLoads: [{ story: 1, verticalKN: 120 }],
+      engineeringDraft: {
+        structureType: 'frame',
+        loads: [{ kind: 'point', magnitude: 20, unit: 'kN', direction: 'globalX', target: 'roof-left' }],
+      },
+      draftIssues: [{
+        field: 'floorLoads',
+        severity: 'conflict',
+        reason: 'Two incompatible floor-load descriptions were supplied.',
+      }],
+      skillState: { invalidDraftFields: ['floorLoads'] },
+      updatedAt: 0,
+    };
+
+    expect(handler.computeMissing(state, 'execution').critical).toContain('floorLoads');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
     const patch = canonicalizeConcreteFramePatch({
       existingState: { inferredType: 'concrete-frame', updatedAt: 0 },
@@ -668,6 +724,70 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(lineCase.loads).toHaveLength(6);
     expect(lineCase.loads.every((load) => load.type === 'distributed')).toBe(true);
     expect(lineCase.loads.every((load) => load.wz === -15)).toBe(true);
+  });
+
+  test('applies story-and-span line loads once to each requested 2d concrete beam', () => {
+    const model = buildConcreteFrameModel({
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 2,
+      storyHeightsM: [3.3, 3.3],
+      bayWidthsM: [5.4, 6],
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        loads: [
+          { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity', location: { story: 1, spanIndex: 1 } },
+          { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity', location: { story: 1, spanIndex: 2 } },
+          { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity', location: { story: 2, spanIndex: 1 } },
+          { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity', location: { story: 2, spanIndex: 2 } },
+        ],
+      },
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase.loads).toHaveLength(4);
+    expect(lineCase.loads.map((load) => load.element)).toEqual([
+      'B7', 'B8', 'B9', 'B10',
+    ]);
+  });
+
+  test('prefers structured story locations over textual load targets and array order', () => {
+    const model = buildConcreteFrameModel({
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 1,
+      storyHeightsM: [3.3, 3.3, 3.3],
+      bayWidthsM: [6],
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        loads: [
+          { kind: 'line', magnitude: 8, unit: 'kN/m', direction: 'gravity', target: 'top-story beam', location: { story: 1 } },
+          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity', location: { story: 3 } },
+        ],
+      },
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase.loads).toEqual([
+      expect.objectContaining({ element: 'B7', story: 'F1', wz: -8 }),
+      expect.objectContaining({ element: 'B9', story: 'F3', wz: -12 }),
+    ]);
   });
 
   test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {

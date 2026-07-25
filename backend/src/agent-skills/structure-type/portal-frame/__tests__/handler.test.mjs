@@ -33,7 +33,8 @@ describe('portal-frame handler', () => {
           geometry: { spanLengthsM: [18, 18], heightM: 9 },
           loads: [
             { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: 'roof' },
-            { kind: 'point', magnitude: 49.03325, unit: 'kN', direction: 'gravity', target: 'crane' },
+            { kind: 'point', magnitude: 49, unit: 'kN', direction: 'gravity', target: 'middle column top', location: { nodeRole: 'middle-column-top' } },
+            { kind: 'point', magnitude: 4.9, unit: 'kN', direction: 'globalX', target: 'middle column top', location: { nodeRole: 'middle-column-top' } },
           ],
         },
       },
@@ -52,7 +53,8 @@ describe('portal-frame handler', () => {
     expect(model.metadata.geometry.spanLengthsM).toEqual([18, 18]);
     expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
       expect.objectContaining({ element: 'R0', wz: -6 }),
-      expect.objectContaining({ node: 'T1', fz: expect.any(Number) }),
+      expect.objectContaining({ node: 'T1', fz: -49 }),
+      expect.objectContaining({ node: 'T1', fx: 4.9 }),
     ]));
   });
 
@@ -69,6 +71,7 @@ describe('portal-frame handler', () => {
         skillState: {
           roofLoadKNM: 6,
           mezzanineHeightM: 3,
+          mezzanineLengthM: 6,
           mezzanineLoadKN: 4,
         },
       },
@@ -92,7 +95,7 @@ describe('portal-frame handler', () => {
       llmDraftPatch: {
         engineeringDraft: {
           structureType: 'portal-frame',
-          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: '', platform: { heightM: 3 } },
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: '', platform: { heightM: 3, lengthM: 6 } },
           loads: [
             { kind: 'line', magnitude: 4, unit: 'kN/m', direction: 'gravity', target: '夹层梁' },
             { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: '屋面' },
@@ -109,6 +112,7 @@ describe('portal-frame handler', () => {
       portalBaySpansM: [18],
       roofLoadKNM: 6,
       mezzanineHeightM: 3,
+      mezzanineLengthM: 6,
       mezzanineLoadKN: 4,
     }));
     expect(model.metadata).toEqual(expect.objectContaining({ hasMezzanine: true }));
@@ -124,7 +128,7 @@ describe('portal-frame handler', () => {
       llmDraftPatch: {
         engineeringDraft: {
           structureType: 'portal-frame',
-          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3 },
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3, mezzanineLengthM: 6 },
           loads: [
             { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: 'roof' },
             { kind: 'point', magnitude: 12, unit: 'kN', direction: 'gravity', target: 'mezzanine' },
@@ -150,7 +154,7 @@ describe('portal-frame handler', () => {
       llmDraftPatch: {
         engineeringDraft: {
           structureType: 'portal-frame',
-          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3 },
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3, mezzanineLengthM: 6 },
           loads: [
             { kind: 'line', magnitude: 5, unit: 'kN/m', direction: 'gravity', target: '屋面夹层' },
             { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: '屋面' },
