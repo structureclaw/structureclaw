@@ -352,6 +352,7 @@ export async function invokeStructuralTypeRouter(input: StructuralRouterInput): 
         `LLM_STRUCTURAL_ROUTER_INFRASTRUCTURE_ERROR: network error: ${
           error instanceof Error ? error.message : String(error)
         }`,
+        { cause: error },
       );
     }
     return null;

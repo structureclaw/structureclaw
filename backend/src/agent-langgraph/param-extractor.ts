@@ -503,6 +503,7 @@ export async function invokeParamExtractor(
         `LLM_PARAM_EXTRACTOR_INFRASTRUCTURE_ERROR: network error: ${
           error instanceof Error ? error.message : String(error)
         }`,
+        { cause: error },
       );
     }
     return null;
