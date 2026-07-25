@@ -50,6 +50,28 @@ class EngineNotAvailableError(RuntimeError):
         super().__init__(f"Engine '{engine}' unavailable: {reason}")
 
 
+class AnalysisCapabilityError(RuntimeError):
+    """Raised when an engine cannot represent or execute a valid requested input."""
+
+    error_code = "ENGINE_INPUT_UNSUPPORTED"
+
+    def __init__(self, engine: str, capability: str, reason: str) -> None:
+        self.engine = engine
+        self.capability = capability
+        self.reason = reason
+        self.meta = {
+            "failureKind": "capability-boundary",
+            "engine": engine,
+            "capability": capability,
+        }
+        self.detail = {
+            "engine": engine,
+            "capability": capability,
+            "reason": reason,
+        }
+        super().__init__(reason)
+
+
 # ---------------------------------------------------------------------------
 # Protocol contract — documentation only, NOT an ABC
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ from typing import Any
 
 import APIPyInterface
 from coordinate_semantics import resolve_model_dimension, validate_coordinate_contract
+from contracts import AnalysisCapabilityError
 
 
 # ---------------------------------------------------------------------------
@@ -1150,7 +1151,11 @@ def convert_v2_to_jws(
     """
     validate_coordinate_contract(data)
     if resolve_model_dimension(data) != "3d":
-        raise ValueError("PKPM floor-model conversion requires a genuine canonical 3-D model")
+        raise AnalysisCapabilityError(
+            engine="pkpm",
+            capability="canonical-3d-building-model",
+            reason="PKPM floor-model conversion requires a genuine canonical 3-D model",
+        )
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     jws_path = work_dir / f"{project_name}.JWS"

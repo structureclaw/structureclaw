@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from coordinate_semantics import coordinate_contract_metadata, resolve_model_dimension, validate_coordinate_contract
-from contracts import EngineNotAvailableError
+from contracts import AnalysisCapabilityError, EngineNotAvailableError
 
 YJK_LOG_SNIPPET_LIMIT = 2000
 YJK_STEP_LIMIT = 8
@@ -866,9 +866,13 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     model_dict = _ensure_v2_model(model_dict)
     validate_coordinate_contract(model_dict)
     if resolve_model_dimension(model_dict) != "3d":
-        raise RuntimeError(
-            "The YJK grid converter currently supports canonical 3-D building models only; "
-            "it will not synthesize a fictitious plan axis for a 2-D X-Z model"
+        raise AnalysisCapabilityError(
+            engine="yjk",
+            capability="canonical-3d-building-model",
+            reason=(
+                "The YJK grid converter currently supports canonical 3-D building models only; "
+                "it will not synthesize a fictitious plan axis for a 2-D X-Z model"
+            ),
         )
     _validate_yjk_grid_conversion_scope(model_dict)
     yjk_python = _resolve_yjk_python()

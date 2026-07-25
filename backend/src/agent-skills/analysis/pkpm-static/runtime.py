@@ -26,7 +26,7 @@ from threading import Lock
 from typing import Any, Dict
 
 from coordinate_semantics import coordinate_contract_metadata, validate_coordinate_contract
-from contracts import EngineNotAvailableError
+from contracts import AnalysisCapabilityError, EngineNotAvailableError
 from pkpm_diagnostics import (
     find_pdb_version_mismatch,
     format_pdb_version_mismatch_error,
@@ -644,6 +644,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         jws_path, converter_mappings = convert_v2_to_jws(
             model_dict, work_dir, project_name, material_family=material_family
         )
+    except AnalysisCapabilityError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"PKPM JWS generation failed: {exc}") from exc
 

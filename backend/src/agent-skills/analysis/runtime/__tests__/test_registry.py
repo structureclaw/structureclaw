@@ -15,7 +15,8 @@ sys.path.insert(0, str(RUNTIME_DIR))
 sys.path.insert(0, str(BACKEND_SRC_DIR / "skill-shared" / "python"))
 
 from registry import AnalysisEngineRegistry  # noqa: E402
-from api import AnalysisRequest  # noqa: E402
+from api import AnalysisRequest, _exception_error_code  # noqa: E402
+from contracts import AnalysisCapabilityError  # noqa: E402
 from structure_protocol.structure_model_v2 import StructureModelV2  # noqa: E402
 
 
@@ -99,6 +100,18 @@ class CapturingRegistry(AnalysisEngineRegistry):
 
 
 class AnalysisRegistryTest(unittest.TestCase):
+    def test_capability_error_has_a_stable_machine_readable_code(self) -> None:
+        error = AnalysisCapabilityError(
+            engine="yjk",
+            capability="canonical-3d-building-model",
+            reason="YJK requires a genuine 3-D model",
+        )
+
+        self.assertEqual(_exception_error_code(error), "ENGINE_INPUT_UNSUPPORTED")
+        self.assertEqual(error.meta["failureKind"], "capability-boundary")
+        self.assertEqual(error.meta["capability"], "canonical-3d-building-model")
+        self.assertEqual(_exception_error_code(RuntimeError("solver crashed")), "ANALYSIS_EXECUTION_FAILED")
+
     def test_worker_request_migrates_v1_before_requiring_the_v2_coordinate_contract(self) -> None:
         legacy_model = build_frame_model().model_dump(mode="json")
         legacy_model["schema_version"] = "1.0.0"

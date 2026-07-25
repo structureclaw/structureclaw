@@ -27,6 +27,11 @@ def _exception_dict_attr(exc: Exception, name: str) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _exception_error_code(exc: Exception) -> str:
+    value = getattr(exc, "error_code", None)
+    return value.strip() if isinstance(value, str) and value.strip() else "ANALYSIS_EXECUTION_FAILED"
+
+
 app = FastAPI(
     title="StructureClaw Analysis Runtime",
     description="Backend-hosted structural analysis runtime",
@@ -185,7 +190,7 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             schema_version=request.model.schema_version,
             analysis_type=request.type,
             success=False,
-            error_code="ANALYSIS_EXECUTION_FAILED",
+            error_code=_exception_error_code(e),
             message=str(e),
             data={},
             meta=error_meta,
