@@ -36,6 +36,7 @@ describe('PythonWorkerRunner abort handling', () => {
     child.stdout = stdout;
     child.stderr = stderr;
     child.stdin = { end: jest.fn() };
+    child.pid = 4321;
     child.kill = jest.fn(() => {
       if (settled) {
         return true;
@@ -65,5 +66,12 @@ describe('PythonWorkerRunner abort handling', () => {
 
     await expect(promise).rejects.toThrow(/abort/i);
     expect(child.kill).toHaveBeenCalled();
+    if (process.platform === 'win32') {
+      expect(spawnSyncMock).toHaveBeenCalledWith(
+        'taskkill.exe',
+        ['/PID', '4321', '/T', '/F'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+    }
   });
 });

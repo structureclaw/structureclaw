@@ -24,6 +24,22 @@ interface PythonWorkerSuccess<T = unknown> {
 
 export type PythonWorkerResponse<T = unknown> = PythonWorkerSuccess<T> | PythonWorkerFailure;
 
+const YJK_WORKER_TIMEOUT_GRACE_MS = 30_000;
+
+function terminateWorkerProcess(child: ReturnType<typeof spawn>): void {
+  if (process.platform === 'win32' && child.pid) {
+    spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+  }
+  try {
+    child.kill('SIGKILL');
+  } catch {
+    // The process may already have exited during tree cleanup.
+  }
+}
+
 export function resolveWorkerPath(relativePath: string): string {
   const candidates = [
     path.resolve(process.cwd(), `backend/src/${relativePath}`),
@@ -156,13 +172,17 @@ export class PythonWorkerRunner<TInput extends object> {
       let stdout = '';
       let stderr = '';
       let settled = false;
+      const workerTimeoutMs = Math.max(
+        config.analysisPythonTimeoutMs,
+        config.yjkTimeoutS * 1000 + YJK_WORKER_TIMEOUT_GRACE_MS,
+      );
       const onAbort = () => {
         if (settled) {
           return;
         }
         settled = true;
         clearTimeout(timeout);
-        child.kill('SIGKILL');
+        terminateWorkerProcess(child);
         const abortError = new Error('Python worker aborted');
         abortError.name = 'AbortError';
         reject(abortError);
@@ -173,9 +193,11 @@ export class PythonWorkerRunner<TInput extends object> {
         }
         settled = true;
         requestOptions?.signal?.removeEventListener('abort', onAbort);
-        child.kill('SIGKILL');
-        reject(new Error(`Python worker timed out after ${config.analysisPythonTimeoutMs}ms`));
-      }, config.analysisPythonTimeoutMs);
+        terminateWorkerProcess(child);
+        reject(new Error(
+          `ANALYSIS_WORKER_INFRASTRUCTURE_ERROR: Python worker timed out after ${workerTimeoutMs}ms`,
+        ));
+      }, workerTimeoutMs);
 
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
