@@ -16,6 +16,14 @@ def _load_driver_module():
     return module
 
 
+def test_driver_does_not_switch_to_design_results_ui_after_calculation():
+    source = (YJK_STATIC_DIR / "yjk_driver.py").read_text(encoding="utf-8")
+
+    # This UI-only command can block after a successful solve. Result
+    # extraction uses yjks_pyload directly and does not require this label.
+    assert '"IDDSN_DSP"' not in source
+
+
 def test_build_analysis_result_maps_yjk_member_design_results():
     driver = _load_driver_module()
 

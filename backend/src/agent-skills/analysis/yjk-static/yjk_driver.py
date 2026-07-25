@@ -2300,12 +2300,6 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
                     phase="analysis_async",
                     steps=background_steps,
                 )
-                _run_cmd(
-                    "SetCurrentLabel",
-                    "IDDSN_DSP",
-                    phase="analysis_async",
-                    steps=background_steps,
-                )
                 print("[yjk_driver] background calculation finished", file=sys.stderr, flush=True)
             except Exception as exc:
                 print(f"[yjk_driver] background calculation error: {exc}", file=sys.stderr, flush=True)
@@ -2353,15 +2347,6 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
             "YJK crashed or failed during design calculation",
             phase="analysis",
             command="yjkdesign_dsncalculating_all",
-            steps=steps,
-            summary={"work_dir": work_dir, "yjk_project": yjk_project},
-        )
-        return 1
-    if not _run_cmd("SetCurrentLabel", "IDDSN_DSP", phase="analysis", steps=steps):
-        _error(
-            "YJK crashed while switching to design result label",
-            phase="analysis",
-            command="SetCurrentLabel",
             steps=steps,
             summary={"work_dir": work_dir, "yjk_project": yjk_project},
         )
