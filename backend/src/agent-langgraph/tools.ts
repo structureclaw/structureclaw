@@ -1952,6 +1952,8 @@ function compactFloorLoadTransferSummary(
 
 function compactAnalysisModelContext(
   model: Record<string, unknown> | undefined,
+  preferredNodeIds: string[] = [],
+  preferredElementIds: string[] = [],
 ): Record<string, unknown> | undefined {
   if (!model) return undefined;
 
@@ -1995,20 +1997,49 @@ function compactAnalysisModelContext(
     })
     .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null);
 
+  const prioritizeEntries = (
+    entries: Array<readonly [string, Record<string, unknown>]>,
+    preferredIds: string[],
+  ): Array<readonly [string, Record<string, unknown>]> => {
+    const entriesById = new Map(entries);
+    const seenIds = new Set<string>();
+    const prioritized: Array<readonly [string, Record<string, unknown>]> = [];
+    for (const id of [...preferredIds, ...entriesById.keys()]) {
+      if (seenIds.has(id)) continue;
+      const value = entriesById.get(id);
+      if (!value) continue;
+      seenIds.add(id);
+      prioritized.push([id, value]);
+    }
+    return prioritized;
+  };
+  const elementsById = new Map(elementEntries);
+  const preferredElementNodeIds = preferredElementIds.flatMap((elementId) => {
+    const nodes = elementsById.get(elementId)?.nodes;
+    return Array.isArray(nodes)
+      ? nodes.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+      : [];
+  });
+  const prioritizedNodeEntries = prioritizeEntries(
+    nodeEntries,
+    [...preferredElementNodeIds, ...preferredNodeIds],
+  );
+  const prioritizedElementEntries = prioritizeEntries(elementEntries, preferredElementIds);
+
   return omitEmptyRecord({
     coordinateSystem: optionalRecord(model.coordinate_system),
     nodes: nodeEntries.length > 0
       ? {
           totalCount: nodeEntries.length,
           truncated: nodeEntries.length > entityLimit,
-          values: Object.fromEntries(nodeEntries.slice(0, entityLimit)),
+          values: Object.fromEntries(prioritizedNodeEntries.slice(0, entityLimit)),
         }
       : undefined,
     elements: elementEntries.length > 0
       ? {
           totalCount: elementEntries.length,
           truncated: elementEntries.length > entityLimit,
-          values: Object.fromEntries(elementEntries.slice(0, entityLimit)),
+          values: Object.fromEntries(prioritizedElementEntries.slice(0, entityLimit)),
         }
       : undefined,
   });
@@ -2098,6 +2129,17 @@ function buildSuccessfulAnalysisDetails(
   const responseMetaValue = (key: string): string | undefined => (
     analysisMeta ? pickStringLike(analysisMeta, key) ?? undefined : undefined
   );
+  const preferredModelNodeIds = [
+    responseEnvelopeId('controlNodeDisplacement'),
+    responseEnvelopeId('controlNodeReaction'),
+    ...Object.keys(optionalRecord(data.displacements ?? data.nodeDisplacements) ?? {}),
+    ...Object.keys(optionalRecord(data.reactions ?? data.nodeReactions) ?? {}),
+  ].filter((id): id is string => typeof id === 'string');
+  const preferredModelElementIds = [
+    responseEnvelopeId('controlElementAxialForce'),
+    responseEnvelopeId('controlElementShearForce'),
+    responseEnvelopeId('controlElementMoment'),
+  ].filter((id): id is string => typeof id === 'string');
   const responses = omitEmptyRecord({
     coordinateSemantics: responseMetaValue('coordinateSemantics'),
     dimension: responseMetaValue('dimension'),
@@ -2147,7 +2189,11 @@ function buildSuccessfulAnalysisDetails(
     counts,
     keyMetrics,
     controlling,
-    modelContext: compactAnalysisModelContext(model),
+    modelContext: compactAnalysisModelContext(
+      model,
+      preferredModelNodeIds,
+      preferredModelElementIds,
+    ),
     responses,
     compliance,
     capabilityAssessment: compactCapabilityAssessment(data),

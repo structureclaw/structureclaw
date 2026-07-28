@@ -2301,17 +2301,35 @@ describe("analysis tool summary", () => {
         { ux: (index + 1) / 1000, uz: -(index + 1) / 1000 },
       ]),
     );
+    const model = {
+      nodes: Array.from({ length: 65 }, (_, index) => ({
+        id: `N${index + 1}`,
+        x: index,
+        y: 0,
+        z: 0,
+      })),
+      elements: Array.from({ length: 65 }, (_, index) => ({
+        id: `E${index + 1}`,
+        type: "beam",
+        nodes: index === 64 ? ["N64", "N65"] : ["N1", "N2"],
+      })),
+    };
 
     const summary = buildAnalysisToolSummary({
       skillId: "opensees-static",
+      model,
       result: {
         success: true,
         data: {
           analysisMode: "opensees_3d_frame",
           displacements,
+          forces: {
+            E65: { axial: 10, n1: { V: 4, M: 8 } },
+          },
           envelope: {
             maxAbsDisplacement: 0.065,
             controlNodeDisplacement: "N65",
+            controlElementMoment: "E65",
           },
         },
       },
@@ -2323,6 +2341,14 @@ describe("analysis tool summary", () => {
     expect(summary.responses.displacements.values.N65).toEqual({
       ux: 0.065,
       uz: -0.065,
+    });
+    expect(Object.keys(summary.modelContext.nodes.values)).toHaveLength(60);
+    expect(summary.modelContext.nodes.values.N64).toEqual({ x: 63, y: 0, z: 0 });
+    expect(summary.modelContext.nodes.values.N65).toEqual({ x: 64, y: 0, z: 0 });
+    expect(Object.keys(summary.modelContext.elements.values)).toHaveLength(60);
+    expect(summary.modelContext.elements.values.E65).toEqual({
+      type: "beam",
+      nodes: ["N64", "N65"],
     });
   });
 
