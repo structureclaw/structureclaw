@@ -58,6 +58,17 @@ export function applySessionToolAccessPolicy(
   }
 }
 
+export function applyToolsNodeSessionContext(
+  configurable: Partial<AgentConfigurable> & Record<string, unknown>,
+  state: AgentState,
+): void {
+  configurable.agentState = state;
+  configurable.skillScope = state.selectedSkillIds?.length
+    ? state.selectedSkillIds
+    : undefined;
+  applySessionToolAccessPolicy(configurable, state.toolAccessPolicy);
+}
+
 // ---------------------------------------------------------------------------
 // Max ReAct iterations guard
 // ---------------------------------------------------------------------------
@@ -493,15 +504,11 @@ export async function buildAgentGraph(deps: GraphDeps) {
   // done in callModel is invisible to the raw ToolNode.
   const toolsNode = async (state: AgentState, config: LangGraphRunnableConfig) => {
     const nodeLog = getAgentLogger(config);
-    const configurableAny = config.configurable as Record<string, unknown>;
-    configurableAny.agentState = state;
-    // Resolve skill scope once for all tools in this invocation
-    configurableAny.skillScope = state.selectedSkillIds?.length
-      ? state.selectedSkillIds
-      : undefined;
+    const configurableAny = config.configurable as Partial<AgentConfigurable> & Record<string, unknown>;
+    applyToolsNodeSessionContext(configurableAny, state);
     const activeTools = resolveActiveTools(
       tools,
-      config.configurable as Partial<AgentConfigurable> | undefined,
+      configurableAny,
     );
     nodeLog.debug({ node: 'tools', activeToolCount: activeTools.length }, 'tools node executing');
     const toolNode = new ToolNode(activeTools);

@@ -22,6 +22,33 @@ describe("LangGraph tool policy", () => {
     });
   });
 
+  test("tools node restores checkpointed access policy before resolving tools", async () => {
+    const { applyToolsNodeSessionContext } = await import("../../../dist/agent-langgraph/graph.js");
+    const configurable = {
+      enabledToolIds: undefined,
+      disabledToolIds: undefined,
+      fileAccessAllowlist: undefined,
+    };
+    const state = {
+      selectedSkillIds: ["beam"],
+      toolAccessPolicy: {
+        enabledToolIds: ["analyze_file"],
+        disabledToolIds: ["read_file"],
+        fileAccessAllowlist: [".uploads/case/input.dxf"],
+      },
+    };
+
+    applyToolsNodeSessionContext(configurable, state);
+
+    expect(configurable).toMatchObject({
+      agentState: state,
+      skillScope: ["beam"],
+      enabledToolIds: ["analyze_file"],
+      disabledToolIds: ["read_file"],
+      fileAccessAllowlist: [".uploads/case/input.dxf"],
+    });
+  });
+
   test("explicit empty enabledToolIds binds no tools", async () => {
     const { resolveActiveToolIds } = await import("../../../dist/agent-langgraph/tool-policy.js");
 
