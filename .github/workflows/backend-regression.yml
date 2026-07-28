@@ -83,7 +83,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies for backend tests
-        run: python -m pip install numpy==1.26.4
+        run: |
+          python -m pip install numpy==1.26.4 typing-extensions==4.15.0
+          python -c "import os, pathlib, sys; pathlib.Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8').write('PYTHON_FOR_TEST=' + sys.executable + '\n')"
 
       - name: Install backend dependencies
         run: npm ci --prefix backend
