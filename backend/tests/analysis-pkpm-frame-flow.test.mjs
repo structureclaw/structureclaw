@@ -94,6 +94,12 @@ function writePkpmApiStub(stubsDir) {
   writeFile(
     path.join(stubsDir, 'contracts.py'),
     [
+      'class AnalysisCapabilityError(RuntimeError):',
+      '    def __init__(self, engine, capability, reason):',
+      '        self.engine = engine',
+      '        self.capability = capability',
+      '        self.reason = reason',
+      '        super().__init__(reason)',
       'class EngineNotAvailableError(RuntimeError):',
       '    def __init__(self, engine, reason):',
       '        self.engine = engine',
@@ -1021,7 +1027,9 @@ describe('PKPM frame analysis flow', () => {
         'import json, sys, types',
         'from pathlib import Path',
         'contracts = types.ModuleType("contracts")',
+        'class AnalysisCapabilityError(RuntimeError): pass',
         'class EngineNotAvailableError(RuntimeError): pass',
+        'contracts.AnalysisCapabilityError = AnalysisCapabilityError',
         'contracts.EngineNotAvailableError = EngineNotAvailableError',
         'sys.modules["contracts"] = contracts',
         'from runtime import _read_wmass_design_params',
