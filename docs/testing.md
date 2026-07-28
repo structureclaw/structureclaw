@@ -36,6 +36,11 @@ This document clarifies the current test system for issue #234 and is updated wh
 | `tests/llm-integration/**` | Legacy LLM integration harness and helper unit tests | `node tests/runner.mjs llm-integration` plus local helper tests |
 | `tests/llm-benchmark/**` | LangGraph agent benchmark scenarios and scoring (git submodule from [structureclaw-benchmark](https://github.com/structureclaw/structureclaw-benchmark)) | `node tests/runner.mjs llm-benchmark` |
 
+The public benchmark submodule intentionally contains the corpus, frozen ground
+truth, runner, and scoring runtime. Fixture generation, independent truth
+audits, benchmark infrastructure tests, formal experiment orchestration, and
+raw results are maintained in the private StructureClaw benchmark lab.
+
 ## CI Workflow Boundaries
 
 | Workflow | Purpose | Notes |
@@ -46,6 +51,7 @@ This document clarifies the current test system for issue #234 and is updated wh
 | `.github/workflows/e2e.yml` | Playwright browser workflows | Triggered on `master`, manually, or by `/test-e2e` comments from allowed users. |
 | `.github/workflows/install-smoke.yml` | Native install/build compatibility smoke | Calls `node tests/runner.mjs smoke-native`; frontend and backend static checks live in their own regression workflows. |
 | `.github/workflows/llm-integration.yml` | Real LLM integration checks | Triggered on `master`, manually, or by `/test-llm` comments from allowed users. |
+| `.github/workflows/llm-benchmark.yml` | Trusted real-LLM benchmark checks | Uses the public benchmark runner and corpus; formal experiment orchestration remains private. |
 | `.github/workflows/publish-npm.yml` | Release gate before publishing | Repeats selected checks to protect releases. It does not own new coverage. |
 
 ## Frontend Vitest Split
