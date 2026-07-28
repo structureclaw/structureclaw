@@ -160,9 +160,9 @@ export function parseDxf(text: string): {
   const dxfLines = text.split(/\r?\n/).map((l) => l.trim());
   for (let pairIndex = 0; pairIndex + 3 < dxfLines.length; pairIndex += 2) {
     if (dxfLines[pairIndex] !== '9' || dxfLines[pairIndex + 1] !== '$INSUNITS') continue;
-    if (dxfLines[pairIndex + 2] !== '70') break;
+    if (dxfLines[pairIndex + 2] !== '70') continue;
     const code = Number.parseInt(dxfLines[pairIndex + 3], 10);
-    if (!Number.isFinite(code)) break;
+    if (!Number.isFinite(code)) continue;
     const definition = insertionUnitDefinitions[code] || { name: `code-${code}`, metersPerUnit: null };
     result.insertionUnits = { code, ...definition };
     break;

@@ -88,6 +88,20 @@ describe('file-tools helpers', () => {
       expect(result.insertionUnits).toEqual({ code: 4, name: 'millimeters', metersPerUnit: 0.001 });
     });
 
+    test('continues scanning after malformed INSUNITS blocks', async () => {
+      const { parseDxf } = await import('../../../dist/agent-langgraph/file-tools.js');
+      const dxf = [
+        '9', '$INSUNITS', '1', 'unexpected-group',
+        '9', '$INSUNITS', '70', 'not-a-number',
+        '9', '$INSUNITS', '70', '6',
+        '0', 'EOF',
+      ].join('\n');
+
+      const result = parseDxf(dxf);
+
+      expect(result.insertionUnits).toEqual({ code: 6, name: 'meters', metersPerUnit: 1 });
+    });
+
     test('extracts TEXT and MTEXT content', async () => {
       const { parseDxf } = await import('../../../dist/agent-langgraph/file-tools.js');
       const dxf = [
