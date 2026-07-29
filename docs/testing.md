@@ -39,6 +39,20 @@ This document clarifies the current test system for issue #234 and is updated wh
 The public benchmark submodule contains the versioned corpus, frozen ground
 truth, runner, and scoring runtime required for reproducible evaluation.
 
+The OpenClaw external harness reuses that corpus and scorer:
+
+```bash
+node tests/runner.mjs openclaw-benchmark --dry-run
+node tests/runner.mjs openclaw-benchmark --scenario <id> --mode all
+```
+
+It pins OpenClaw to `2026.6.33` and Paratera `GLM-5.2` (experiment label
+`glm-5.2-paratera`) without model fallbacks. The
+default workload concurrency is 10, while OpenSees, PKPM, and YJK each retain
+an independent capacity-one solver lock; YJK also retains the 5-second
+post-run cooldown. Standard workflow scenarios run in `auto` and
+`generic-only`; interactive and multimodal scenarios run in `auto`.
+
 ## CI Workflow Boundaries
 
 | Workflow | Purpose | Notes |

@@ -19,6 +19,11 @@ function loadBenchmarkRunner() {
   return require("./llm-benchmark/runner.cjs");
 }
 
+function loadOpenClawBenchmarkRunner() {
+  process.env.SCLAW_ROOT = rootDir;
+  return require("./llm-benchmark/external/openclaw/runner.cjs");
+}
+
 function parseCliOptions(args) {
   const positionals = [];
   const flags = new Map();
@@ -85,6 +90,11 @@ Commands:
                                          skill_match | natural_language
                           [--scenario <scenarioId>]
                           [--output <results.json>]
+  openclaw-benchmark    OpenClaw 2026.6.33 + GLM-5.2 (Paratera) external benchmark
+                          [--scenario <scenarioId>]
+                          [--mode <auto|generic-only|all>]
+                          [--concurrency <n>]
+                          [--dry-run]
   smoke-native          CI-style native install smoke (npm ci + build)
 
 Replaces former sclaw commands:
@@ -149,6 +159,9 @@ async function main() {
       return;
     case "llm-benchmark":
       await loadBenchmarkRunner().runBenchmark(rawArgs);
+      return;
+    case "openclaw-benchmark":
+      await loadOpenClawBenchmarkRunner().runOpenClawBenchmark(rawArgs);
       return;
     default:
       throw new Error(`Unknown command: ${cmd}`);

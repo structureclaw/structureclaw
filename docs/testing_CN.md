@@ -39,6 +39,19 @@
 公共 benchmark 子模块包含可复现评测所需的版本化评测集、冻结真值、运行器
 和评分运行时。
 
+OpenClaw 外部 harness 复用同一套评测集与评分器：
+
+```bash
+node tests/runner.mjs openclaw-benchmark --dry-run
+node tests/runner.mjs openclaw-benchmark --scenario <id> --mode all
+```
+
+该入口将 OpenClaw 固定为 `2026.6.33`、模型固定为 Paratera `GLM-5.2`
+（实验标签 `glm-5.2-paratera`），并禁用模型 fallback。默认任务并发数为 10；
+OpenSees、PKPM、YJK 仍分别使用容量为 1 的
+独立求解器锁，YJK 还保留运行后 5 秒冷却。标准工作流场景运行 `auto` 和
+`generic-only`，交互与多模态场景只运行 `auto`。
+
 ## CI Workflow 边界
 
 | Workflow | 用途 | 说明 |
