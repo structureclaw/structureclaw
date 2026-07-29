@@ -36,9 +36,8 @@
 | `tests/llm-integration/**` | 旧 LLM integration harness 与 helper unit test | `node tests/runner.mjs llm-integration` 加本地 helper 测试 |
 | `tests/llm-benchmark/**` | LangGraph agent benchmark 场景与评分（git submodule，源仓库 [structureclaw-benchmark](https://github.com/structureclaw/structureclaw-benchmark)） | `node tests/runner.mjs llm-benchmark` |
 
-公共 benchmark 子模块只保留评测集、冻结真值、运行器和评分运行时。Fixture
-生成、独立真值审计、benchmark 基础设施测试、正式实验编排和原始结果由
-StructureClaw 私有 benchmark lab 维护。
+公共 benchmark 子模块包含可复现评测所需的版本化评测集、冻结真值、运行器
+和评分运行时。
 
 ## CI Workflow 边界
 
@@ -50,7 +49,7 @@ StructureClaw 私有 benchmark lab 维护。
 | `.github/workflows/e2e.yml` | Playwright 浏览器流程 | 在 `master`、手动触发，或允许用户评论 `/test-e2e` 时运行。 |
 | `.github/workflows/install-smoke.yml` | Native install/build 兼容性 smoke | 调用 `node tests/runner.mjs smoke-native`；frontend 和 backend 静态检查由各自 regression workflow 负责。 |
 | `.github/workflows/llm-integration.yml` | 真实 LLM integration 检查 | 在 `master`、手动触发，或允许用户评论 `/test-llm` 时运行。 |
-| `.github/workflows/llm-benchmark.yml` | 可信触发的真实 LLM benchmark | 使用公共 benchmark 运行器与评测集；正式实验编排仍保留在私有 lab。 |
+| `.github/workflows/llm-benchmark.yml` | 可信触发的真实 LLM benchmark | 使用公共 benchmark 运行器与评测集。 |
 | `.github/workflows/publish-npm.yml` | 发布前 gate | 为保护发布重复运行部分检查。它不拥有新增测试覆盖。 |
 
 ## Frontend Vitest 拆分
