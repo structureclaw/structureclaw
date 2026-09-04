@@ -162,6 +162,8 @@ export type StructuralTypeKey =
   | 'steel-frame'
   | 'concrete-frame'
   | 'reinforced-concrete-frame'
+  | 'shear-wall'
+  | 'composite'
   | 'portal'
   | 'girder'
   | 'space-frame'

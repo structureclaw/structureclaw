@@ -111,6 +111,21 @@ export function matchConservativeStructuralRoute(message: string): ConservativeS
   const normalizedText = normalizeForWords(message);
 
   if (
+    hasEnglishPhrase(normalizedText, rawText, ['shear wall', 'shear-wall', 'shearwall', 'wall frame', 'wall-frame', 'coupled wall', 'core wall', 'core tube'])
+    || hasRawPhrase(rawText, ['剪力墙', '抗震墙', '框剪', '框架剪力墙', '框架-剪力墙', '核心筒'])
+  ) {
+    return route('shear-wall', 'frame', 'shear-wall');
+  }
+
+  if (
+    hasEnglishPhrase(normalizedText, rawText, ['steel-concrete composite', 'steel concrete composite', 'composite beam', 'composite column', 'composite frame', 'composite structure', 'composite section', 'composite floor'])
+    || hasWord(normalizedText, 'composite')
+    || hasRawPhrase(rawText, ['组合结构', '组合梁', '组合柱', '组合楼盖', '组合楼板', '组合楼层', '钢混结构', '型钢混凝土', '钢骨混凝土', '钢管混凝土'])
+  ) {
+    return route('composite', 'frame', 'composite');
+  }
+
+  if (
     hasEnglishPhrase(normalizedText, rawText, ['reinforced concrete frame', 'reinforced-concrete-frame', 'concrete frame', 'concrete-frame', 'rc frame', 'rc-frame'])
     || hasRawPhrase(rawText, ['钢筋混凝土框架', '钢筋砼框架', '混凝土框架', '砼框架', 'rc框架'])
   ) {

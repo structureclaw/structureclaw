@@ -1,0 +1,60 @@
+id: composite
+domain: structure-type
+source: builtin
+name:
+  zh: 钢-混凝土组合结构
+  en: Steel-Concrete Composite
+description:
+  zh: 钢-混凝土组合梁/组合柱结构的需求识别、组合截面与栓钉补参 skill。
+  en: Skill for steel-concrete composite beam/column intent detection with composite section and shear stud clarification.
+triggers:
+  - composite
+  - steel-concrete
+  - steel concrete
+  - composite beam
+  - composite column
+  - composite frame
+  - composite structure
+  - 组合结构
+  - 组合梁
+  - 组合柱
+  - 组合楼盖
+  - 组合楼板
+  - 钢混结构
+  - 型钢混凝土
+  - 钢骨混凝土
+  - 钢管混凝土
+stages:
+  - intent
+  - draft
+  - analysis
+  - design
+structureType: frame
+structuralTypeKeys:
+  - composite
+capabilities:
+  - intent-detection
+  - draft-extraction
+  - interaction-questions
+  - model-build
+  - report-narrative
+requires: []
+conflicts: []
+priority: 75
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies:
+  - composite
+  - steel
+  - concrete
+aliases: []
+toolHints: {}
+runtimeContract:
+  role: entry
+  provides:
+    - designBasis

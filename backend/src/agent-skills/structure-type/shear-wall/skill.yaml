@@ -1,0 +1,56 @@
+id: shear-wall
+domain: structure-type
+source: builtin
+name:
+  zh: 剪力墙
+  en: Shear Wall
+description:
+  zh: 剪力墙及框架-剪力墙结构的需求识别、墙肢/连梁补参 skill。
+  en: Skill for shear wall and frame-shear wall intent detection with wall pier and coupling beam clarification.
+triggers:
+  - shear wall
+  - shear-wall
+  - shearwall
+  - wall frame
+  - wall-frame
+  - coupled wall
+  - core wall
+  - core tube
+  - 剪力墙
+  - 抗震墙
+  - 框剪
+  - 框架剪力墙
+  - 核心筒
+stages:
+  - intent
+  - draft
+  - analysis
+  - design
+structureType: frame
+structuralTypeKeys:
+  - shear-wall
+  - frame-shear-wall
+capabilities:
+  - intent-detection
+  - draft-extraction
+  - interaction-questions
+  - model-build
+  - report-narrative
+requires: []
+conflicts: []
+priority: 75
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies:
+  - concrete
+aliases: []
+toolHints: {}
+runtimeContract:
+  role: entry
+  provides:
+    - designBasis

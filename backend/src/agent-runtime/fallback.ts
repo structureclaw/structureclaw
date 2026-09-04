@@ -18,6 +18,7 @@ import type {
 import { mergeEngineeringDraft } from './engineering-draft.js';
 import { buildModel as buildDraftModel } from './model-builder.js';
 import { localize } from './plugin-helpers.js';
+import { matchConservativeStructuralRoute } from './structural-routing.js';
 
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
@@ -403,6 +404,13 @@ export function buildUnknownStructuralType(locale: AppLocale): StructuralTypeMat
 
 export function detectUnsupportedStructuralTypeByRules(message: string, locale: AppLocale): StructuralTypeMatch | null {
   const text = message.toLowerCase();
+  // The composite and shear-wall keyword families overlap the generic
+  // plate/slab heuristic (组合楼板, wall core in a building), so an explicit
+  // composite/shear-wall route wins; other unsupported heuristics stay put.
+  const explicitRoute = matchConservativeStructuralRoute(message);
+  if (explicitRoute !== null && (explicitRoute.key === 'composite' || explicitRoute.key === 'shear-wall')) {
+    return null;
+  }
   if (text.includes('space frame') || text.includes('网架')) {
     return buildUnsupportedStructuralType(
       locale,

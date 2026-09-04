@@ -58,6 +58,8 @@ const STRUCTURAL_TYPE_KEYS = new Set<StructuralTypeKey>([
   'steel-frame',
   'concrete-frame',
   'reinforced-concrete-frame',
+  'shear-wall',
+  'composite',
   'portal',
   'girder',
   'space-frame',
