@@ -178,6 +178,13 @@ ${summarizeArtifacts(state)}
 - run_analysis 成功后，先调用 run_code_check，designCode 使用 "GB/T 50011-2010-2024"（或会话中等价的 GB50011 设计规范），再调用 generate_report；不要直接从抗震分析跳到报告。
 - 抗震报告应包含规范校核结果或明确说明校核未执行的原因；如果 generate_report 返回 SEISMIC_CODE_CHECK_REQUIRED，立即补调用 run_code_check 后重试报告。
 
+**设计迭代循环（run_design）**:
+- 规范校核（run_code_check）存在失败项时，调用 run_design 进入设计迭代：设计引擎会为超限构件提出并应用截面/配筋调整，并更新会话中的模型。
+- run_design 应用调整后，必须立即重新调用 run_analysis，再调用 run_code_check 验证新截面；若仍有失败项，再次调用 run_design 形成闭环：设计 → 分析 → 校核。
+- run_design 返回 converged（校核全部通过）或 max_iterations_reached（达到最大迭代次数）时，不要再次调用 run_design；直接调用 generate_report 收尾，并如实说明收敛状态或剩余超限项。
+- run_design 返回 blocked_approval 时，先把调整建议（before → after 对比）呈现给用户征求意见；用户同意后再次调用 run_design 并传 approved=true。
+- 不要在规范校核通过后调用 run_design；不要向 run_design 传递模型或校核结果 JSON，它们会从会话状态自动读取。
+
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
 
@@ -257,6 +264,13 @@ When the user makes a structural design or analysis request, follow this workflo
 - If the code conditions require supplementary elastic time-history analysis and no ground motions are available, set groundMotionSet.requiredCount to 3 or 7; use the built-in artificial catalog builtin_artificial only when the user explicitly accepts example waves.
 - After run_analysis succeeds, call run_code_check with designCode "GB/T 50011-2010-2024" (or the equivalent GB50011 design code in session state), then call generate_report; do not jump directly from seismic analysis to report generation.
 - Seismic reports should include compliance-check results or clearly state why checking was not run; if generate_report returns SEISMIC_CODE_CHECK_REQUIRED, call run_code_check and retry the report.
+
+**Design iteration loop (run_design)**:
+- When run_code_check reports failed checks, call run_design to enter the design loop: the design engine proposes and applies section/reinforcement adjustments for overstressed members and updates the model in conversation state.
+- After run_design applies changes, immediately call run_analysis again, then run_code_check to verify the new sections; if checks still fail, call run_design again — design → analysis → code-check.
+- When run_design returns converged (all checks pass) or max_iterations_reached, do NOT call run_design again; call generate_report to finish and honestly report the convergence status or remaining violations.
+- When run_design returns blocked_approval, present the proposed changes (before → after comparison) to the user first; after the user agrees, call run_design again with approved=true.
+- Do not call run_design when code checks pass; do not pass model or code-check JSON to run_design — it reads them from conversation state automatically.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }

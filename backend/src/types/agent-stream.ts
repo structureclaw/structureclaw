@@ -23,7 +23,7 @@ type PublicPresentationChunk =
   | { type: 'artifact_upsert'; artifact: ArtifactState }
   | {
       type: 'artifact_payload_sync';
-      artifact: 'model' | 'analysis' | 'report';
+      artifact: 'model' | 'analysis' | 'design' | 'report';
       model?: Record<string, unknown>;
       latestResult?: Record<string, unknown>;
       snapshot?: Record<string, unknown>;

@@ -83,6 +83,21 @@ export type SettingsFileYjk = {
   directReadyTimeoutS?: number;
 };
 
+export type SettingsFileDesignAiStructure = {
+  enabled?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+  endpointPath?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
+  estimatedCostPerCall?: number;
+};
+
+export type SettingsFileDesign = {
+  maxIterations?: number;
+  aiStructure?: SettingsFileDesignAiStructure;
+};
+
 export type SettingsFile = {
   server?: SettingsFileServer;
   llm?: SettingsFileLlm;
@@ -95,6 +110,7 @@ export type SettingsFile = {
   agent?: SettingsFileAgent;
   pkpm?: SettingsFilePkpm;
   yjk?: SettingsFileYjk;
+  design?: SettingsFileDesign;
   updatedAt?: string;
 };
 
@@ -315,6 +331,44 @@ function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
   return result;
 }
 
+function normalizeDesignAiStructureSection(raw: unknown): SettingsFileDesignAiStructure | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const enabled = normalizeOptionalBoolean(record.enabled);
+  const baseUrl = normalizeOptionalString(record.baseUrl);
+  const apiKey = normalizeOptionalString(record.apiKey);
+  const endpointPath = normalizeOptionalString(record.endpointPath);
+  const timeoutMs = normalizeOptionalNumber(record.timeoutMs);
+  const maxRetries = normalizeOptionalNumber(record.maxRetries);
+  const estimatedCostPerCall = normalizeOptionalNumber(record.estimatedCostPerCall);
+  if (
+    enabled === undefined && baseUrl === undefined && apiKey === undefined
+    && endpointPath === undefined && timeoutMs === undefined
+    && maxRetries === undefined && estimatedCostPerCall === undefined
+  ) return undefined;
+  const result: SettingsFileDesignAiStructure = {};
+  if (enabled !== undefined) result.enabled = enabled;
+  if (baseUrl !== undefined) result.baseUrl = baseUrl;
+  if (apiKey !== undefined) result.apiKey = apiKey;
+  if (endpointPath !== undefined) result.endpointPath = endpointPath;
+  if (timeoutMs !== undefined) result.timeoutMs = timeoutMs;
+  if (maxRetries !== undefined) result.maxRetries = maxRetries;
+  if (estimatedCostPerCall !== undefined) result.estimatedCostPerCall = estimatedCostPerCall;
+  return result;
+}
+
+function normalizeDesignSection(raw: unknown): SettingsFileDesign | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const maxIterations = normalizeOptionalNumber(record.maxIterations);
+  const aiStructure = normalizeDesignAiStructureSection(record.aiStructure);
+  if (maxIterations === undefined && aiStructure === undefined) return undefined;
+  const result: SettingsFileDesign = {};
+  if (maxIterations !== undefined) result.maxIterations = maxIterations;
+  if (aiStructure !== undefined) result.aiStructure = aiStructure;
+  return result;
+}
+
 function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
@@ -329,8 +383,9 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   const agent = normalizeAgentSection(record.agent);
   const pkpm = normalizePkpmSection(record.pkpm);
   const yjk = normalizeYjkSection(record.yjk);
+  const design = normalizeDesignSection(record.design);
   const updatedAt = normalizeOptionalString(record.updatedAt);
-  if (!server && !llm && !vision && !database && !logging && !analysis && !storage && !cors && !agent && !pkpm && !yjk) return null;
+  if (!server && !llm && !vision && !database && !logging && !analysis && !storage && !cors && !agent && !pkpm && !yjk && !design) return null;
   const result: SettingsFile = {};
   if (server) result.server = server;
   if (llm) result.llm = llm;
@@ -343,6 +398,7 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   if (agent) result.agent = agent;
   if (pkpm) result.pkpm = pkpm;
   if (yjk) result.yjk = yjk;
+  if (design) result.design = design;
   if (updatedAt) result.updatedAt = updatedAt;
   return result;
 }

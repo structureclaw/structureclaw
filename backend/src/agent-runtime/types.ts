@@ -409,6 +409,112 @@ export interface SkillReportNarrativeInput {
   locale: AppLocale;
 }
 
+// ---------------------------------------------------------------------------
+// Design loop types (analyze → code-check → design → re-analyze iteration)
+// ---------------------------------------------------------------------------
+
+/** Outcome of a single design-loop iteration. */
+export type DesignLoopAction =
+  | 'iterate'
+  | 'converged'
+  | 'no_change'
+  | 'max_iterations_reached'
+  | 'blocked_approval';
+
+/** One section-size change proposed/applied by a design provider. */
+export interface DesignSectionChange {
+  sectionId: string;
+  /** Elements that use this section and triggered the change. */
+  elementIds: string[];
+  purpose?: string;
+  /** Section display name before the change. */
+  before: string;
+  /** Section display name after the change. */
+  after: string;
+  /** Controlling utilization ratio that drove the change (>1 = failed). */
+  utilizationBefore?: number;
+  /** Estimated utilization after applying the change. */
+  utilizationAfter?: number;
+  reason: string;
+}
+
+export interface DesignCostEstimate {
+  currency?: string;
+  amount?: number;
+  note?: string;
+}
+
+/** External ai-structure.com service configuration (resolved from settings). */
+export interface AiStructureDesignSettings {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey?: string;
+  endpointPath: string;
+  timeoutMs: number;
+  maxRetries: number;
+  estimatedCostPerCall?: number;
+}
+
+export interface DesignSettings {
+  maxIterations: number;
+  aiStructure: AiStructureDesignSettings;
+}
+
+export interface SkillDesignInput {
+  model: Record<string, unknown>;
+  analysis?: Record<string, unknown> | null;
+  codeCheck?: Record<string, unknown> | null;
+  /** 1-based iteration about to run. */
+  iteration: number;
+  maxIterations: number;
+  locale: AppLocale;
+  /** Whether design changes may be applied to the model in this call. */
+  approved?: boolean;
+  settings?: DesignSettings;
+}
+
+export interface SkillDesignResult {
+  /** Design provider id, e.g. 'local-rule' or the design skill id. */
+  provider: string;
+  applied: boolean;
+  action: DesignLoopAction;
+  iteration: number;
+  maxIterations: number;
+  converged: boolean;
+  changes: DesignSectionChange[];
+  /** Updated model — present only when changes were applied. */
+  model?: Record<string, unknown>;
+  maxUtilizationBefore?: number;
+  maxUtilizationAfter?: number;
+  summary: LocalizedText;
+  costEstimate?: DesignCostEstimate;
+  providerMeta?: Record<string, unknown>;
+}
+
+export interface DesignIterationRecord {
+  iteration: number;
+  provider: string;
+  action: DesignLoopAction;
+  applied: boolean;
+  converged: boolean;
+  changes: DesignSectionChange[];
+  codeCheckFailed?: number;
+  maxUtilizationBefore?: number;
+  maxUtilizationAfter?: number;
+  summary: LocalizedText;
+  costEstimate?: DesignCostEstimate;
+  completedAt: string;
+}
+
+/** Design-loop state persisted in agent session state. */
+export interface AgentDesignLoopState {
+  iterations: DesignIterationRecord[];
+  maxIterations: number;
+  lastAction: DesignLoopAction | null;
+  converged: boolean;
+  updatedAt: string;
+}
+
 export interface SkillHandler {
   detectStructuralType(input: SkillDetectionInput): StructuralTypeMatch | null;
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
@@ -420,6 +526,12 @@ export interface SkillHandler {
   buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];
   buildReportNarrative?(input: SkillReportNarrativeInput): string;
   buildModel(state: DraftState): Record<string, unknown> | undefined;
+  /**
+   * Optional design-iteration hook for design-oriented skills. Produces a
+   * design proposal (section sizing / reinforcement adjustments) from the
+   * current model + code-check failure signals. May return a Promise.
+   */
+  buildDesign?(input: SkillDesignInput): SkillDesignResult | Promise<SkillDesignResult>;
   resolveStage?(missingKeys: string[], state: DraftState): 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 }
 

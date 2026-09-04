@@ -7,6 +7,7 @@ const EXPECTED_TOOL_IDS = [
   'validate_model',
   'run_analysis',
   'run_code_check',
+  'run_design',
   'generate_report',
   'calculate',
   'ask_user_clarification',
@@ -65,8 +66,8 @@ describe('tool registry: AGENT_TOOL_DEFINITIONS structure', () => {
 
     const engineeringIds = [
       'detect_structure_type', 'extract_draft_params', 'build_model',
-      'validate_model', 'run_analysis', 'run_code_check', 'generate_report',
-      'calculate',
+      'validate_model', 'run_analysis', 'run_code_check', 'run_design',
+      'generate_report', 'calculate',
     ];
     for (const id of engineeringIds) {
       const def = AGENT_TOOL_DEFINITIONS.find((d) => d.id === id);

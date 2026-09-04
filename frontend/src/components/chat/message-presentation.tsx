@@ -3,11 +3,11 @@
 import type { MessageKey } from '@/lib/i18n'
 import { MarkdownBody } from './markdown-body'
 
-type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report'
+type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report'
 type PresentationPhaseStatus = 'pending' | 'running' | 'done' | 'error'
 
-const PHASE_ORDER: PresentationPhase[] = ['understanding', 'modeling', 'validation', 'analysis', 'report']
-type ArtifactName = 'model' | 'analysis' | 'report'
+const PHASE_ORDER: PresentationPhase[] = ['understanding', 'modeling', 'validation', 'analysis', 'design', 'report']
+type ArtifactName = 'model' | 'analysis' | 'design' | 'report'
 
 // --- TimelineStepItem ---
 

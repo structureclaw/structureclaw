@@ -1,0 +1,46 @@
+id: design-ai-structure
+domain: design
+source: builtin
+name:
+  zh: 智能设计服务
+  en: AI Design Service
+description:
+  zh: 接入 ai-structure.com 智能设计服务执行截面优化与配筋设计迭代，服务不可用时回退本地规则设计引擎。
+  en: ai-structure.com powered section-optimization design iterations with a local rule-based design engine fallback.
+triggers:
+  - 智能设计
+  - 截面优化
+  - 配筋优化
+  - design optimization
+  - section optimization
+  - ai-structure
+stages:
+  - design
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - design-iteration
+  - section-optimization
+requires: []
+conflicts: []
+priority: 50
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}
+runtimeContract:
+  role: designer
+  consumes:
+    - postprocessedResult
+    - codeCheckResult
+  providesPatches:
+    - modelPatch
+  requiresUserAcceptance: false
+  autoIteration:
+    supported: true
+    defaultEnabled: true

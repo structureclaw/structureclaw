@@ -34,6 +34,17 @@ import type {
   StructuralTypeMatch,
 } from '../agent-runtime/types.js';
 import { isFreshGenericStructuralRoute } from '../agent-runtime/plugin-helpers.js';
+import { resolveDesignSettings } from '../config/design-settings.js';
+import {
+  buildDesignLoopStopResult,
+  createEmptyDesignLoopState,
+  extractCodeCheckStats,
+  isDesignConverged,
+  isDesignLoopExhausted,
+  markDesignLoopStopped,
+  nextDesignIteration,
+  reduceDesignIteration,
+} from '../agent-skills/design/loop.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 // ---------------------------------------------------------------------------
 // Helpers
@@ -3375,6 +3386,150 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
           .string()
           .describe('Design code to check against (GB50010, GB50011, GB/T 50011-2010-2024, GB50017, JGJ3)'),
         engineId: z.string().optional().describe('Optional engine ID'),
+      }),
+    },
+  );
+}
+
+export function createRunDesignTool(skillRuntime: AgentSkillRuntime) {
+  return tool(
+    async (input: { approved?: boolean }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
+      const configurable = getConfigurable(config);
+      const state = configurable.agentState;
+      const toolCallId = getToolCallId(config);
+      const locale = state?.locale === 'en' ? 'en' : 'zh';
+
+      // Read model + code check from graph state channels
+      const model = state?.model;
+      if (!model) {
+        return toolResult(toolCallId, 'run_design', JSON.stringify({ error: 'No model available. Run build_model first.' }));
+      }
+      const codeCheck = state?.codeCheckResult;
+      if (!codeCheck) {
+        return toolResult(toolCallId, 'run_design', JSON.stringify({ error: 'No code-check results available. Run run_analysis and run_code_check first.' }));
+      }
+
+      const designSettings = resolveDesignSettings();
+      const designState = state?.designState ?? createEmptyDesignLoopState(designSettings.maxIterations);
+      const iteration = nextDesignIteration(designState);
+
+      // Loop exit 1: code check passes — converged, nothing to design.
+      if (isDesignConverged(codeCheck)) {
+        const stop = buildDesignLoopStopResult({
+          action: 'converged',
+          iteration,
+          maxIterations: designState.maxIterations,
+        });
+        const nextState = markDesignLoopStopped(designState, 'converged');
+        logToolCall(log, { tool: 'run_design', durationMs: Date.now() - start, extra: { action: stop.action, success: true } });
+        return toolResult(
+          toolCallId,
+          'run_design',
+          JSON.stringify({ ...stop, codeCheck: extractCodeCheckStats(codeCheck), nextAction: 'Call generate_report to produce the final report.' }),
+          { designState: nextState },
+        );
+      }
+
+      // Loop exit 2: max-iteration guard.
+      if (isDesignLoopExhausted(designState)) {
+        const stop = buildDesignLoopStopResult({
+          action: 'max_iterations_reached',
+          iteration,
+          maxIterations: designState.maxIterations,
+        });
+        const nextState = markDesignLoopStopped(designState, 'max_iterations_reached');
+        logToolCall(log, { tool: 'run_design', durationMs: Date.now() - start, extra: { action: stop.action, success: false } });
+        return toolResult(
+          toolCallId,
+          'run_design',
+          JSON.stringify({
+            ...stop,
+            success: false,
+            codeCheck: extractCodeCheckStats(codeCheck),
+            nextAction: 'Do not call run_design again. Summarize the remaining violations and generate a report, or ask the user how to proceed.',
+          }),
+          { designState: nextState },
+        );
+      }
+
+      // Approval gate: when the session policy requires approval, changes are
+      // only applied once the LLM passes approved=true after user confirmation.
+      const approvalRequired = state?.policy?.requireApprovalBeforeExecution === true;
+      const approved = approvalRequired ? input.approved === true : true;
+
+      const result = await skillRuntime.executeDesignSkill({
+        input: {
+          model,
+          analysis: state?.analysisResult ?? null,
+          codeCheck,
+          iteration,
+          maxIterations: designState.maxIterations,
+          locale,
+          approved,
+          settings: designSettings,
+        },
+        skillIds: configurable.skillScope,
+      });
+      const nextState = reduceDesignIteration(designState, result);
+
+      const summaryPayload: Record<string, unknown> = {
+        success: true,
+        provider: result.provider,
+        iteration: result.iteration,
+        maxIterations: result.maxIterations,
+        action: result.action,
+        applied: result.applied,
+        converged: result.converged,
+        changes: result.changes,
+        codeCheck: extractCodeCheckStats(codeCheck),
+        summary: locale === 'zh' ? result.summary.zh : result.summary.en,
+        ...(result.maxUtilizationBefore !== undefined ? { maxUtilizationBefore: result.maxUtilizationBefore } : {}),
+        ...(result.maxUtilizationAfter !== undefined ? { maxUtilizationAfter: result.maxUtilizationAfter } : {}),
+        ...(result.costEstimate !== undefined ? { costEstimate: result.costEstimate } : {}),
+        nextAction: result.applied
+          ? 'The model was updated. Call run_analysis, then run_code_check to verify the new sections; repeat run_design only if checks still fail. Call generate_report once checks pass.'
+          : result.action === 'blocked_approval'
+            ? 'Design changes require user approval. Present the proposed changes to the user, and after they agree call run_design again with approved=true.'
+            : 'No further design change is possible. Summarize the remaining violations and call generate_report.',
+      };
+      if (result.providerMeta) {
+        summaryPayload.providerMeta = result.providerMeta;
+      }
+
+      logToolCall(log, {
+        tool: 'run_design',
+        durationMs: Date.now() - start,
+        success: true,
+        extra: { action: result.action, applied: result.applied, provider: result.provider, changes: result.changes.length },
+      });
+
+      // Write the updated model + design loop state via Command. The model
+      // channel is only touched when changes were actually applied.
+      return toolResult(
+        toolCallId,
+        'run_design',
+        JSON.stringify(summaryPayload),
+        result.applied && result.model
+          ? { model: result.model, designState: nextState }
+          : { designState: nextState },
+      );
+    },
+    {
+      name: 'run_design',
+      description:
+        'Run one design iteration: propose and apply section sizing / reinforcement adjustments for members ' +
+        'that failed the code check, then update the model in conversation state. ' +
+        'Reads the model and code-check results from conversation state automatically — do NOT pass them as parameters. ' +
+        'Call this after run_code_check when checks fail, then re-run run_analysis and run_code_check. ' +
+        'The loop stops automatically when checks pass or the max iteration count is reached. ' +
+        'Pass approved=true only after the user agreed to the proposed design changes when approval is required.',
+      schema: z.object({
+        approved: z
+          .boolean()
+          .optional()
+          .describe('Set to true to apply design changes when the session requires user approval before applying them.'),
       }),
     },
   );

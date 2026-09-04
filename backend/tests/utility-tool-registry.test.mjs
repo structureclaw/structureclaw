@@ -20,6 +20,7 @@ const CURRENT_TOOL_IDS = [
   'replace_in_file',
   'run_analysis',
   'run_code_check',
+  'run_design',
   'set_session_config',
   'shell',
   'validate_model',

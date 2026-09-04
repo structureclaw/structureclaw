@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
-  Server, FileText, FlaskConical, Folder, Globe, Bot, Cpu, Cog, Wand2,
+  Server, FileText, FlaskConical, Folder, Globe, Bot, Cpu, Cog, Wand2, Ruler,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,6 +31,18 @@ type SettingsResponse = {
     installRoot: Field<string>; exePath: Field<string>; pythonBin: Field<string>; sdkArchivePath: Field<string>; workDir: Field<string>; version: Field<string>;
     timeoutS: Field<number>; invisible: Field<boolean>; launcherPrewarm: Field<string>; launcherPrewarmS: Field<number>; directReadyTimeoutS: Field<number>
   }
+  design: {
+    maxIterations: Field<number>
+    aiStructure: {
+      enabled: Field<boolean>
+      baseUrl: Field<string>
+      hasApiKey: boolean
+      endpointPath: Field<string>
+      timeoutMs: Field<number>
+      maxRetries: Field<number>
+      estimatedCostPerCall: Field<number>
+    }
+  }
 }
 
 type YjkAutoConfigureResponse = {
@@ -47,6 +59,8 @@ interface FieldDef {
   kind: FieldKind
   sectionKey: string
   stateKey: string
+  /** Optional nested group inside the section (e.g. design.aiStructure). */
+  groupKey?: string
   props?: Record<string, unknown>
   options?: string[]
 }
@@ -64,6 +78,7 @@ const SECTIONS: { key: string; labelKey: MessageKey; icon: typeof Server }[] = [
   { key: 'agent', labelKey: 'generalSettingsAgentSection', icon: Bot },
   { key: 'pkpm', labelKey: 'generalSettingsPkpmSection', icon: Cpu },
   { key: 'yjk', labelKey: 'generalSettingsYjkSection', icon: Cog },
+  { key: 'design', labelKey: 'generalSettingsDesignSection', icon: Ruler },
 ]
 
 const FIELDS: FieldDef[] = [
@@ -108,6 +123,15 @@ const FIELDS: FieldDef[] = [
   { key: 'yjk.launcherPrewarm', labelKey: 'generalSettingsYjkLauncherPrewarmLabel', kind: 'select', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarm', options: ['auto', 'always', 'off'] },
   { key: 'yjk.launcherPrewarmS', labelKey: 'generalSettingsYjkLauncherPrewarmSecondsLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarmS', props: { min: 0, step: 1 } },
   { key: 'yjk.directReadyTimeoutS', labelKey: 'generalSettingsYjkDirectReadyTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkDirectReadyTimeoutS', props: { min: 0, step: 1 } },
+  // Design (Agent design loop + ai-structure service)
+  { key: 'design.maxIterations', labelKey: 'generalSettingsDesignMaxIterationsLabel', kind: 'number', sectionKey: 'design', stateKey: 'designMaxIterations', props: { min: 1, max: 100 } },
+  { key: 'design.aiStructure.enabled', labelKey: 'generalSettingsDesignAiEnabledLabel', kind: 'checkbox', sectionKey: 'design', stateKey: 'designAiStructureEnabled', groupKey: 'aiStructure' },
+  { key: 'design.aiStructure.baseUrl', labelKey: 'generalSettingsDesignAiBaseUrlLabel', kind: 'text', sectionKey: 'design', stateKey: 'designAiStructureBaseUrl', groupKey: 'aiStructure' },
+  { key: 'design.aiStructure.endpointPath', labelKey: 'generalSettingsDesignAiEndpointPathLabel', kind: 'text', sectionKey: 'design', stateKey: 'designAiStructureEndpointPath', groupKey: 'aiStructure' },
+  { key: 'design.aiStructure.timeoutMs', labelKey: 'generalSettingsDesignAiTimeoutLabel', kind: 'number', sectionKey: 'design', stateKey: 'designAiStructureTimeoutMs', groupKey: 'aiStructure', props: { min: 1000 } },
+  { key: 'design.aiStructure.maxRetries', labelKey: 'generalSettingsDesignAiMaxRetriesLabel', kind: 'number', sectionKey: 'design', stateKey: 'designAiStructureMaxRetries', groupKey: 'aiStructure', props: { min: 0, max: 10 } },
+  { key: 'design.aiStructure.estimatedCostPerCall', labelKey: 'generalSettingsDesignAiCostLabel', kind: 'number', sectionKey: 'design', stateKey: 'designAiStructureEstimatedCostPerCall', groupKey: 'aiStructure', props: { min: 0, step: 0.01 } },
+  { key: 'design.aiStructure.apiKey', labelKey: 'generalSettingsDesignAiApiKeyLabel', kind: 'text', sectionKey: 'design', stateKey: 'designAiStructureApiKey', groupKey: 'aiStructure' },
 ]
 
 // Default values for each field (used before API responds)
@@ -121,6 +145,9 @@ const DEFAULTS: Record<string, string | number | boolean> = {
   pkpmCyclePath: '', pkpmWorkDir: '',
   yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkSdkArchivePath: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
   yjkLauncherPrewarm: 'always', yjkLauncherPrewarmS: 18, yjkDirectReadyTimeoutS: 12,
+  designMaxIterations: 10, designAiStructureEnabled: false, designAiStructureBaseUrl: 'https://ai-structure.com',
+  designAiStructureEndpointPath: '/api/v1/design/optimize', designAiStructureTimeoutMs: 30000, designAiStructureMaxRetries: 2,
+  designAiStructureEstimatedCostPerCall: 0, designAiStructureApiKey: '',
 }
 
 // Map stateKey → API field name for sections that use different naming
@@ -129,22 +156,31 @@ const STATE_TO_API_KEY: Record<string, string> = {
   yjkInstallRoot: 'installRoot', yjkExePath: 'exePath', yjkPythonBin: 'pythonBin', yjkSdkArchivePath: 'sdkArchivePath', yjkWorkDir: 'workDir',
   yjkVersion: 'version', yjkTimeoutS: 'timeoutS', yjkInvisible: 'invisible',
   yjkLauncherPrewarm: 'launcherPrewarm', yjkLauncherPrewarmS: 'launcherPrewarmS', yjkDirectReadyTimeoutS: 'directReadyTimeoutS',
+  designMaxIterations: 'maxIterations',
+  designAiStructureEnabled: 'enabled', designAiStructureBaseUrl: 'baseUrl', designAiStructureApiKey: 'apiKey',
+  designAiStructureEndpointPath: 'endpointPath', designAiStructureTimeoutMs: 'timeoutMs',
+  designAiStructureMaxRetries: 'maxRetries', designAiStructureEstimatedCostPerCall: 'estimatedCostPerCall',
 }
 
+const MASKED_API_KEY = '********'
+
 // Map stateKey → response path for extraction
-function extractFieldValue(data: SettingsResponse, sectionKey: string, stateKey: string): { value: string | number | boolean; source: ValueSource; defaultValue: string | number | boolean } {
-  const apiKey = STATE_TO_API_KEY[stateKey] ?? stateKey
-  const section = (data as unknown as Record<string, Record<string, { value: unknown; source: ValueSource; defaultValue?: unknown }>>)[sectionKey]
-  const field = section?.[apiKey]
-  if (!field) {
-    const defaultValue = DEFAULTS[stateKey] ?? ''
+function extractFieldValue(data: SettingsResponse, field: FieldDef): { value: string | number | boolean; source: ValueSource; defaultValue: string | number | boolean } {
+  const apiKey = STATE_TO_API_KEY[field.stateKey] ?? field.stateKey
+  const section = (data as unknown as Record<string, Record<string, unknown>>)[field.sectionKey]
+  const group = field.groupKey
+    ? (section?.[field.groupKey] as Record<string, { value: unknown; source: ValueSource; defaultValue?: unknown }> | undefined)
+    : (section as Record<string, { value: unknown; source: ValueSource; defaultValue?: unknown }> | undefined)
+  const fieldValue = group?.[apiKey] as { value: unknown; source: ValueSource; defaultValue?: unknown } | undefined
+  if (!fieldValue) {
+    const defaultValue = DEFAULTS[field.stateKey] ?? ''
     return { value: defaultValue, source: 'default', defaultValue }
   }
-  const fallbackDefault = DEFAULTS[stateKey] ?? ''
+  const fallbackDefault = DEFAULTS[field.stateKey] ?? ''
   return {
-    value: field.value as string | number | boolean,
-    source: field.source,
-    defaultValue: (field.defaultValue ?? fallbackDefault) as string | number | boolean,
+    value: fieldValue.value as string | number | boolean,
+    source: fieldValue.source,
+    defaultValue: (fieldValue.defaultValue ?? fallbackDefault) as string | number | boolean,
   }
 }
 
@@ -196,7 +232,15 @@ export function GeneralSettingsPanel() {
     const newSources: Record<string, ValueSource> = {}
     const newDefaultValues: Record<string, string | number | boolean> = {}
     for (const field of FIELDS) {
-      const { value, source, defaultValue } = extractFieldValue(data, field.sectionKey, field.stateKey)
+      if (field.stateKey === 'designAiStructureApiKey') {
+        // API keys are never returned — show the masked placeholder when one is saved.
+        const hasApiKey = data.design?.aiStructure?.hasApiKey ?? false
+        newValues[field.stateKey] = hasApiKey ? MASKED_API_KEY : ''
+        newSources[field.stateKey] = hasApiKey ? 'runtime' : 'default'
+        newDefaultValues[field.stateKey] = ''
+        continue
+      }
+      const { value, source, defaultValue } = extractFieldValue(data, field)
       newValues[field.stateKey] = value
       newSources[field.stateKey] = source
       newDefaultValues[field.stateKey] = defaultValue
@@ -238,11 +282,35 @@ export function GeneralSettingsPanel() {
     // Build PUT body — only changed fields grouped by section
     const body: Record<string, Record<string, unknown>> = {}
     for (const field of FIELDS) {
+      if (field.stateKey === 'designAiStructureApiKey') continue // handled below
       if (values[field.stateKey] !== originals[field.stateKey]) {
         if (!body[field.sectionKey]) body[field.sectionKey] = {}
+        const sectionBody = body[field.sectionKey]
         const apiKey = STATE_TO_API_KEY[field.stateKey] ?? field.stateKey
-        body[field.sectionKey][apiKey] = values[field.stateKey]
+        if (field.groupKey) {
+          const group = (sectionBody[field.groupKey] ?? {}) as Record<string, unknown>
+          group[apiKey] = values[field.stateKey]
+          sectionBody[field.groupKey] = group
+        } else {
+          sectionBody[apiKey] = values[field.stateKey]
+        }
       }
+    }
+
+    // Design ai-structure API key: only sent when the user replaced or cleared it.
+    const apiKeyValue = String(values.designAiStructureApiKey ?? '')
+    const apiKeyOriginal = String(originals.designAiStructureApiKey ?? '')
+    if (apiKeyValue !== apiKeyOriginal) {
+      const designBody = (body.design ?? {}) as Record<string, unknown>
+      const aiStructure = (designBody.aiStructure ?? {}) as Record<string, unknown>
+      if (apiKeyValue === '') {
+        aiStructure.apiKeyMode = 'inherit'
+      } else if (apiKeyValue !== MASKED_API_KEY) {
+        aiStructure.apiKey = apiKeyValue
+        aiStructure.apiKeyMode = 'replace'
+      }
+      designBody.aiStructure = aiStructure
+      body.design = designBody
     }
 
     if (Object.keys(body).length === 0) {

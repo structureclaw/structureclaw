@@ -1,7 +1,7 @@
-export type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report';
+export type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report';
 type PresentationPhaseStatus = 'pending' | 'running' | 'done' | 'error';
 type PresentationStatus = 'streaming' | 'done' | 'error' | 'aborted';
-type ArtifactName = 'model' | 'analysis' | 'report';
+type ArtifactName = 'model' | 'analysis' | 'design' | 'report';
 
 // --- TimelineStepItem: one step = one tool execution ---
 
@@ -120,7 +120,7 @@ export interface PresentationResultLike {
 
 // --- Constants ---
 
-const PHASE_ORDER: PresentationPhase[] = ['understanding', 'modeling', 'validation', 'analysis', 'report'];
+const PHASE_ORDER: PresentationPhase[] = ['understanding', 'modeling', 'validation', 'analysis', 'design', 'report'];
 
 // --- Public helpers ---
 
@@ -470,6 +470,9 @@ function phaseForToolCall(tool: string): PresentationPhase {
   if (tool === 'run_analysis' || tool === 'run_code_check') {
     return 'analysis';
   }
+  if (tool === 'run_design') {
+    return 'design';
+  }
   if (tool === 'generate_report') {
     return 'report';
   }
@@ -590,6 +593,7 @@ function phaseTitle(phase: PresentationPhase, locale: 'en' | 'zh' = 'en'): strin
     modeling: '建模阶段',
     validation: '校验阶段',
     analysis: '分析阶段',
+    design: '设计阶段',
     report: '报告阶段',
   };
   const en: Record<PresentationPhase, string> = {
@@ -597,6 +601,7 @@ function phaseTitle(phase: PresentationPhase, locale: 'en' | 'zh' = 'en'): strin
     modeling: 'Modeling',
     validation: 'Validation',
     analysis: 'Analysis',
+    design: 'Design',
     report: 'Report',
   };
   return locale === 'zh' ? zh[phase] : en[phase];
@@ -617,6 +622,9 @@ function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
   }
   if (tool === 'run_analysis' || tool === 'run_code_check') {
     return locale === 'zh' ? '分析执行完成' : 'Analysis completed';
+  }
+  if (tool === 'run_design') {
+    return locale === 'zh' ? '设计迭代完成' : 'Design iteration completed';
   }
   if (tool === 'generate_report') {
     return locale === 'zh' ? '报告已生成' : 'Report generated';
@@ -639,6 +647,9 @@ function toolErrorTitle(tool: string, locale: 'en' | 'zh'): string {
   }
   if (tool === 'run_analysis' || tool === 'run_code_check') {
     return locale === 'zh' ? '分析执行失败' : 'Analysis failed';
+  }
+  if (tool === 'run_design') {
+    return locale === 'zh' ? '设计迭代失败' : 'Design iteration failed';
   }
   if (tool === 'generate_report') {
     return locale === 'zh' ? '报告生成失败' : 'Report generation failed';

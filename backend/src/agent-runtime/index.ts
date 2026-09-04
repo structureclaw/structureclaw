@@ -13,6 +13,8 @@ import { AgentSkillExecutor } from './executor.js';
 import { invokeStructuralTypeRouter } from './llm-router.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { isFreshGenericStructuralRoute, withStructuralTypeState } from './plugin-helpers.js';
+import { proposeLocalRuleDesign } from '../agent-skills/design/provider.js';
+import { buildSkillDesignResultFromProvider } from '../agent-skills/design/loop.js';
 import {
   loadSkillManifestsFromDirectorySync,
   resolveBuiltinSkillManifestRoot,
@@ -24,6 +26,8 @@ import type {
   AgentSkillPlugin,
   DraftParameterExtractionResult,
   DraftState,
+  SkillDesignInput,
+  SkillDesignResult,
   StructuralTypeMatch,
   SkillReportNarrativeInput,
   SkillManifest,
@@ -61,6 +65,13 @@ function formatCodeCheckSummaryText(summary: Record<string, unknown> | undefined
 export type {
   AgentSkillBundle,
   AgentSkillPlugin,
+  AgentDesignLoopState,
+  DesignIterationRecord,
+  DesignLoopAction,
+  DesignSectionChange,
+  DesignSettings,
+  DesignCostEstimate,
+  AiStructureDesignSettings,
   DraftExtraction,
   DraftFloorLoad,
   DraftLoadPosition,
@@ -72,6 +83,8 @@ export type {
   FrameDimension,
   InferredModelType,
   InteractionQuestion,
+  SkillDesignInput,
+  SkillDesignResult,
   StructuralTypeMatch,
   StructuralTypeKey,
   StructuralTypeSupportLevel,
@@ -370,6 +383,44 @@ export class AgentSkillRuntime {
       result: (validated?.data ?? {}) as Record<string, unknown>,
       skillId: 'validation-structure-model',
     };
+  }
+
+  /**
+   * Run one design iteration through the design skill layer.
+   *
+   * Prefers a selected design-domain skill plugin with a `buildDesign`
+   * handler (e.g. the ai-structure skill); falls back to the built-in
+   * rule-based local design engine when no design plugin applies.
+   */
+  async executeDesignSkill(options: {
+    input: SkillDesignInput;
+    skillIds?: string[];
+  }): Promise<SkillDesignResult> {
+    const { input } = options;
+    const designPlugins = (await this.registry.listPlugins())
+      .filter((plugin) => plugin.manifest.domain === 'design')
+      .sort((left, right) => right.manifest.priority - left.manifest.priority);
+    const requestedSkillIds = Array.isArray(options.skillIds) ? new Set(options.skillIds) : undefined;
+    const selectedPlugin = designPlugins.find((plugin) =>
+      !requestedSkillIds || requestedSkillIds.has(plugin.id))
+      ?? (requestedSkillIds === undefined ? designPlugins[0] : undefined);
+
+    if (selectedPlugin?.handler.buildDesign) {
+      return await selectedPlugin.handler.buildDesign(input);
+    }
+
+    const providerResult = await proposeLocalRuleDesign({
+      model: input.model,
+      codeCheck: input.codeCheck ?? null,
+      analysis: input.analysis ?? null,
+    });
+    return buildSkillDesignResultFromProvider({
+      providerResult,
+      iteration: input.iteration,
+      maxIterations: input.maxIterations,
+      approved: input.approved !== false,
+      designSkillId: selectedPlugin?.id,
+    });
   }
 
   private listBuiltinAnalysisSkillManifests(): LoadedSkillManifest[] {

@@ -355,6 +355,7 @@ function emitArtifactSync(toolOutput: string, nodeState?: any): AgentStreamChunk
     if (parsed && typeof parsed === 'object' && parsed.success) {
       const model = resolveStateValue(nodeState, 'model');
       const analysisResult = resolveStateValue(nodeState, 'analysisResult');
+      const designState = resolveStateValue(nodeState, 'designState');
       const report = resolveStateValue(nodeState, 'report');
 
       if (model) {
@@ -369,6 +370,13 @@ function emitArtifactSync(toolOutput: string, nodeState?: any): AgentStreamChunk
           type: 'artifact_payload_sync',
           artifact: 'analysis',
           latestResult: { analysis: analysisResult as Record<string, unknown> },
+        });
+      }
+      if (designState) {
+        chunks.push({
+          type: 'artifact_payload_sync',
+          artifact: 'design',
+          latestResult: { designState: designState as Record<string, unknown> },
         });
       }
       if (report) {
@@ -424,7 +432,7 @@ function extractToolBlockerReason(toolName: string, toolOutput: string): string 
 // Phase mapping
 // ---------------------------------------------------------------------------
 
-function mapToolToPhase(toolName: string): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
+function mapToolToPhase(toolName: string): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report' {
   if (toolName.includes('detect') || toolName.includes('extract') || toolName.includes('clarification')) {
     return 'understanding';
   }
@@ -433,6 +441,9 @@ function mapToolToPhase(toolName: string): 'understanding' | 'modeling' | 'valid
   }
   if (toolName.includes('validate')) {
     return 'validation';
+  }
+  if (toolName.includes('design')) {
+    return 'design';
   }
   if (toolName.includes('analysis') || toolName.includes('code_check')) {
     return 'analysis';

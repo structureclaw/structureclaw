@@ -8,6 +8,7 @@ import {
   createGenerateReportTool,
   createRunAnalysisTool,
   createRunCodeCheckTool,
+  createRunDesignTool,
   createSetSessionConfigTool,
   createValidateModelTool,
 } from './tools.js';
@@ -117,6 +118,18 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       en: 'Run design-code checks from the model and analysis results.',
     },
     create: ({ skillRuntime }) => createRunCodeCheckTool(skillRuntime),
+  },
+  {
+    id: 'run_design',
+    category: 'engineering',
+    risk: 'low',
+    defaultEnabled: true,
+    displayName: { zh: '智能设计迭代', en: 'Run Design Iteration' },
+    description: {
+      zh: '根据规范校核失败项提出并应用截面/配筋调整，进入设计迭代循环。',
+      en: 'Propose and apply section/reinforcement adjustments for failed code checks as one design-loop iteration.',
+    },
+    create: ({ skillRuntime }) => createRunDesignTool(skillRuntime),
   },
   {
     id: 'generate_report',

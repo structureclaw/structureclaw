@@ -18,6 +18,8 @@ import {
   type SettingsFileAgent,
   type SettingsFilePkpm,
   type SettingsFileYjk,
+  type SettingsFileDesign,
+  type SettingsFileDesignAiStructure,
 } from '../config/settings-file.js';
 
 // ---------------------------------------------------------------------------
@@ -124,6 +126,18 @@ type SettingsResponse = {
     launcherPrewarmS: ValueField<number>;
     directReadyTimeoutS: ValueField<number>;
   };
+  design: {
+    maxIterations: ValueField<number>;
+    aiStructure: {
+      enabled: ValueField<boolean>;
+      baseUrl: ValueField<string>;
+      hasApiKey: boolean;
+      endpointPath: ValueField<string>;
+      timeoutMs: ValueField<number>;
+      maxRetries: ValueField<number>;
+      estimatedCostPerCall: ValueField<number>;
+    };
+  };
 };
 
 function buildSettingsResponse(): SettingsResponse {
@@ -180,6 +194,13 @@ function buildSettingsResponse(): SettingsResponse {
     yjkLauncherPrewarm: 'auto',
     yjkLauncherPrewarmS: 18,
     yjkDirectReadyTimeoutS: 12,
+    designMaxIterations: 10,
+    designAiStructureEnabled: false,
+    designAiStructureBaseUrl: 'https://ai-structure.com',
+    designAiStructureEndpointPath: '/api/v1/design/optimize',
+    designAiStructureTimeoutMs: 30000,
+    designAiStructureMaxRetries: 2,
+    designAiStructureEstimatedCostPerCall: 0,
   };
 
   const hasSettingsApiKey = !!file?.llm?.apiKey?.trim();
@@ -249,7 +270,27 @@ function buildSettingsResponse(): SettingsResponse {
       launcherPrewarmS: numberSource(file?.yjk?.launcherPrewarmS, defaults.yjkLauncherPrewarmS),
       directReadyTimeoutS: numberSource(file?.yjk?.directReadyTimeoutS, defaults.yjkDirectReadyTimeoutS),
     },
+    design: {
+      maxIterations: numberSource(file?.design?.maxIterations, defaults.designMaxIterations),
+      aiStructure: {
+        enabled: booleanSource(file?.design?.aiStructure?.enabled ?? envDesignAiStructureEnabled(), defaults.designAiStructureEnabled),
+        baseUrl: stringSource(file?.design?.aiStructure?.baseUrl, defaults.designAiStructureBaseUrl),
+        hasApiKey: !!file?.design?.aiStructure?.apiKey?.trim() || !!process.env.DESIGN_AI_STRUCTURE_API_KEY?.trim(),
+        endpointPath: stringSource(file?.design?.aiStructure?.endpointPath, defaults.designAiStructureEndpointPath),
+        timeoutMs: numberSource(file?.design?.aiStructure?.timeoutMs, defaults.designAiStructureTimeoutMs),
+        maxRetries: numberSource(file?.design?.aiStructure?.maxRetries, defaults.designAiStructureMaxRetries),
+        estimatedCostPerCall: numberSource(file?.design?.aiStructure?.estimatedCostPerCall, defaults.designAiStructureEstimatedCostPerCall),
+      },
+    },
   };
+}
+
+function envDesignAiStructureEnabled(): boolean | undefined {
+  const raw = process.env.DESIGN_AI_STRUCTURE_ENABLED?.trim().toLowerCase();
+  if (raw === undefined) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +355,19 @@ const updateSettingsSchema = z.object({
     launcherPrewarm: z.enum(['auto', 'always', 'off']).optional(),
     launcherPrewarmS: z.number().int().min(0).optional(),
     directReadyTimeoutS: z.number().int().min(0).optional(),
+  }).optional(),
+  design: z.object({
+    maxIterations: z.number().int().min(1).max(100).optional(),
+    aiStructure: z.object({
+      enabled: z.boolean().optional(),
+      baseUrl: z.string().trim().url().optional(),
+      apiKey: z.string().optional(),
+      apiKeyMode: z.enum(['keep', 'replace', 'inherit']).optional(),
+      endpointPath: z.string().trim().optional(),
+      timeoutMs: z.number().int().min(1000).optional(),
+      maxRetries: z.number().int().min(0).max(10).optional(),
+      estimatedCostPerCall: z.number().min(0).optional(),
+    }).optional(),
   }).optional(),
 });
 
@@ -425,6 +479,29 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
     if (input.yjk.launcherPrewarmS !== undefined) yjk.launcherPrewarmS = input.yjk.launcherPrewarmS;
     if (input.yjk.directReadyTimeoutS !== undefined) yjk.directReadyTimeoutS = input.yjk.directReadyTimeoutS;
     next.yjk = yjk;
+  }
+
+  if (input.design) {
+    const design: SettingsFileDesign = { ...(current.design ?? {}) };
+    if (input.design.maxIterations !== undefined) design.maxIterations = input.design.maxIterations;
+    if (input.design.aiStructure) {
+      const aiStructure: SettingsFileDesignAiStructure = { ...(current.design?.aiStructure ?? {}) };
+      const requested = input.design.aiStructure;
+      if (requested.enabled !== undefined) aiStructure.enabled = requested.enabled;
+      if (requested.baseUrl !== undefined) aiStructure.baseUrl = requested.baseUrl;
+      if (requested.endpointPath !== undefined) aiStructure.endpointPath = requested.endpointPath;
+      if (requested.timeoutMs !== undefined) aiStructure.timeoutMs = requested.timeoutMs;
+      if (requested.maxRetries !== undefined) aiStructure.maxRetries = requested.maxRetries;
+      if (requested.estimatedCostPerCall !== undefined) aiStructure.estimatedCostPerCall = requested.estimatedCostPerCall;
+      const apiKeyMode = requested.apiKeyMode || 'keep';
+      if (apiKeyMode === 'inherit') {
+        aiStructure.apiKey = undefined;
+      } else if (apiKeyMode === 'replace' && requested.apiKey !== undefined) {
+        aiStructure.apiKey = requested.apiKey.trim() || undefined;
+      }
+      design.aiStructure = aiStructure;
+    }
+    next.design = design;
   }
 
   return next;

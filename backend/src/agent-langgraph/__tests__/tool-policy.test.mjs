@@ -89,6 +89,7 @@ describe("LangGraph tool policy", () => {
       "replace_in_file",
       "run_analysis",
       "run_code_check",
+      "run_design",
       "set_session_config",
       "validate_model",
       "write_file",

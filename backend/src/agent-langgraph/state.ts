@@ -9,6 +9,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 import type {
   DraftState,
   AgentArtifactState,
+  AgentDesignLoopState,
   AgentExecutionPolicy,
   ProviderBindingState,
 } from '../agent-runtime/types.js';
@@ -140,6 +141,11 @@ export const AgentStateAnnotation = Annotation.Root({
   }),
   /** Code check results (written by run_code_check tool via Command). */
   codeCheckResult: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  /** Design-loop state (written by run_design tool via Command). */
+  designState: Annotation<AgentDesignLoopState | null>({
     reducer: (_prev, next) => next,
     default: () => null,
   }),

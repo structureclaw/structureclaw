@@ -7,6 +7,7 @@ import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
 import { SeismicVisualReport } from './seismic-visual-report'
 import { ToolCallCard } from './tool-call-card'
+import { DesignIterationCard, type DesignLoopStateView } from './design-iteration-card'
 import { extractCodeCheckOverview } from './code-check-overview'
 import { LanguageToggle } from '@/components/language-toggle'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -119,6 +120,7 @@ type AgentResult = {
   interaction?: AgentInteraction
   analysis?: Record<string, unknown>
   codeCheck?: unknown
+  designState?: Record<string, unknown>
   report?: {
     summary?: string
     markdown?: string
@@ -146,7 +148,7 @@ type StreamPayload =
   | { type: 'phase_upsert'; phase?: TimelinePhaseGroup }
   | { type: 'step_upsert'; phaseId?: string; step?: TimelineStepItem }
   | { type: 'artifact_upsert'; artifact?: PresentationArtifactState }
-  | { type: 'artifact_payload_sync'; artifact?: 'model' | 'analysis' | 'report'; model?: Record<string, unknown>; latestResult?: AgentResult; snapshot?: VisualizationSnapshot }
+  | { type: 'artifact_payload_sync'; artifact?: 'model' | 'analysis' | 'design' | 'report'; model?: Record<string, unknown>; latestResult?: AgentResult; snapshot?: VisualizationSnapshot }
   | { type: 'summary_replace'; summaryText?: string }
   | { type: 'presentation_complete'; completedAt?: string }
   | { type: 'presentation_error'; phase?: string; message?: string }
@@ -716,7 +718,7 @@ function parsePersistedPresentation(metadata: unknown): AssistantPresentation | 
       .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object'))
       .map((p): TimelinePhaseGroup => ({
         phaseId: typeof p.phaseId === 'string' ? p.phaseId : `phase:${p.phase ?? 'modeling'}`,
-        phase: (typeof p.phase === 'string' ? p.phase : 'modeling') as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report',
+        phase: (typeof p.phase === 'string' ? p.phase : 'modeling') as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report',
         title: typeof p.title === 'string' ? p.title : undefined,
         status: (typeof p.status === 'string' ? p.status : 'done') as 'pending' | 'running' | 'done' | 'error',
         steps: Array.isArray(p.steps) ? p.steps as TimelineStepItem[] : [],
@@ -761,11 +763,12 @@ function stripLegacyAbortedSuffix(content: string) {
   return LEGACY_ABORTED_SUFFIX_PATTERNS.reduce((current, pattern) => current.replace(pattern, ''), content)
 }
 
-function mapToolNameToPhase(toolName: string | undefined): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
+function mapToolNameToPhase(toolName: string | undefined): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report' {
   const name = toolName ?? 'unknown'
   if (name.includes('detect') || name.includes('extract') || name.includes('clarification')) return 'understanding'
   if (name.includes('draft') || name.includes('build_model') || name.includes('model')) return 'modeling'
   if (name.includes('validate')) return 'validation'
+  if (name.includes('design')) return 'design'
   if (name.includes('analysis') || name.includes('code_check')) return 'analysis'
   if (name.includes('report')) return 'report'
   return 'understanding'
@@ -4527,7 +4530,7 @@ export function AIConsole() {
             assistantContent = payload.message || assistantContent
             const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
               type: 'presentation_error',
-              phase: payload.phase as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report',
+              phase: payload.phase as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'design' | 'report',
               message: payload.message,
             })
             syncTextPresentation(nextPresentation, 'error')
@@ -4544,6 +4547,15 @@ export function AIConsole() {
                 ...(current || {}),
                 ...(payload.latestResult || {}),
               }))
+            }
+            if (payload.artifact === 'design' && payload.latestResult && activeConversationId === conversationIdRef.current) {
+              const designState = payload.latestResult.designState
+              if (designState && typeof designState === 'object') {
+                setLatestResult((current) => ({
+                  ...(current || {}),
+                  designState,
+                }))
+              }
             }
             if (payload.artifact === 'report' && payload.latestResult && activeConversationId === conversationIdRef.current) {
               setLatestResult((current) => ({
@@ -5258,7 +5270,17 @@ export function AIConsole() {
                           <div className="space-y-2">
                             {group.tools.map((toolMessage) => (
                               toolMessage.toolStep ? (
-                                <ToolCallCard key={toolMessage.id} step={toolMessage.toolStep} t={t} attached />
+                                toolMessage.toolStep.tool === 'run_design' ? (
+                                  <DesignIterationCard
+                                    key={toolMessage.id}
+                                    step={toolMessage.toolStep}
+                                    designState={latestResult?.designState as DesignLoopStateView | undefined}
+                                    locale={locale}
+                                    t={t}
+                                  />
+                                ) : (
+                                  <ToolCallCard key={toolMessage.id} step={toolMessage.toolStep} t={t} attached />
+                                )
                               ) : toolMessage.status === 'streaming' ? (
                                 <span key={toolMessage.id} className="inline-flex items-center gap-1.5" role="status">
                                   <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
@@ -5288,7 +5310,16 @@ export function AIConsole() {
                       <div className="max-w-[88%] space-y-2">
                         <div className="space-y-2">
                           {message.toolStep && (
-                            <ToolCallCard step={message.toolStep} t={t} attached />
+                            message.toolStep.tool === 'run_design' ? (
+                              <DesignIterationCard
+                                step={message.toolStep}
+                                designState={latestResult?.designState as DesignLoopStateView | undefined}
+                                locale={locale}
+                                t={t}
+                              />
+                            ) : (
+                              <ToolCallCard step={message.toolStep} t={t} attached />
+                            )
                           )}
                           {message.status === 'streaming' && !message.toolStep && (
                             <span className="inline-flex items-center gap-1.5" role="status">
