@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "structureclaw-benchmark-compare/v1",
+  "notes": [
+    "Dual-target llm-benchmark comparison config (issue #304).",
+    "Targets are locally served OpenAI-compatible vLLM endpoints from the model-deploy stack folder outside this repo: GLM-5.3-Flash on GPUs 0-3 (host port 7999) and Qwen3.8-Flash-Next FP8 on GPUs 6-7 (host port 8002).",
+    "The judge is a fixed third model served single-GPU on the GPU free of both targets; its compose file lives in the model-deploy stack folder outside this repo. Start it before running.",
+    "The benchmark judge client only accepts HTTPS judge endpoints. For a locally served judge, terminate TLS in front of it (e.g. https proxy on 127.0.0.1:8443 forwarding to the vLLM judge port) and export NODE_EXTRA_CA_CERTS pointing at the terminating CA before running — the orchestrator forwards it to the benchmark runner.",
+    "apiKeyEnv names the environment variable holding each endpoint key. Key values are resolved from the environment at run time and are never written to committed files, logs, or comparison reports.",
+    "Each target's isolated runtime-data dir is wiped and re-seeded with a minimal analysis-only settings.json ({ analysis: { pythonBin } }) pointing at the shared ~/.structureclaw/.venv interpreter — without it the backend would fall back to the system python3, which lacks the analysis runtime dependencies. Override the interpreter via SCLAW_BENCHMARK_PYTHON_BIN. The file never carries LLM config; per-target model isolation flows from environment variables only."
+  ],
+  "targets": [
+    {
+      "name": "glm-5.3-flash",
+      "label": "GLM-5.3-Flash (local vLLM, GPUs 0-3)",
+      "baseUrl": "http://127.0.0.1:7999/v1",
+      "model": "zai-org/GLM-5.3-Flash",
+      "apiKeyEnv": "SCLAW_BENCHMARK_VLLM_API_KEY"
+    },
+    {
+      "name": "qwen3.8-flash-next",
+      "label": "Qwen3.8-Flash-Next FP8 (local vLLM, GPUs 6-7)",
+      "baseUrl": "http://127.0.0.1:8002/v1",
+      "model": "Qwen/Qwen3.8-Flash-Next-FP8",
+      "apiKeyEnv": "SCLAW_BENCHMARK_VLLM_API_KEY"
+    }
+  ],
+  "judge": {
+    "name": "judge",
+    "label": "Qwen3.6-35B-A3B-FP8 (local vLLM, single judge GPU)",
+    "baseUrl": "https://127.0.0.1:8443/v1",
+    "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "apiKeyEnv": "SCLAW_BENCHMARK_JUDGE_API_KEY"
+  }
+}

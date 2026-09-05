@@ -24,6 +24,14 @@ function loadOpenClawBenchmarkRunner() {
   return require("./llm-benchmark/external/openclaw/runner.cjs");
 }
 
+async function runLlmBenchmarkCompare(rawArgs) {
+  // Developer-facing comparison harness; loaded lazily like the submodule runners.
+  const { runLlmBenchmarkCompare: runOrchestrator } = await import(
+    "./llm-benchmark-compare/lib/orchestrator.mjs"
+  );
+  await runOrchestrator(rawArgs);
+}
+
 function parseCliOptions(args) {
   const positionals = [];
   const flags = new Map();
@@ -95,6 +103,14 @@ Commands:
                           [--mode <auto|generic-only|all>]
                           [--concurrency <n>]
                           [--dry-run]
+  llm-benchmark-compare Dual-target llm-benchmark comparison: runs the public
+                        benchmark once per configured local vLLM target with a
+                        fixed shared judge, then writes comparison.json + .md
+                          [--config <targets.json>]
+                          [--output-dir <dir>] (required)
+                          [--scenario <id> | --family <taskFamily> | --smoke]
+                          [--case-timeout-ms <n>]
+                          [--dry-run]
   smoke-native          CI-style native install smoke (npm ci + build)
 
 Replaces former sclaw commands:
@@ -162,6 +178,9 @@ async function main() {
       return;
     case "openclaw-benchmark":
       await loadOpenClawBenchmarkRunner().runOpenClawBenchmark(rawArgs);
+      return;
+    case "llm-benchmark-compare":
+      await runLlmBenchmarkCompare(rawArgs);
       return;
     default:
       throw new Error(`Unknown command: ${cmd}`);
